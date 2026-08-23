@@ -51,6 +51,7 @@ from .models import (
     StickerItem,
     UserSettings,
 )
+from .security import JobAccess, RequestProtection, SecurityMiddleware
 from .texts import (
     LANGUAGE_PROMPT_TEXT,
     about_text,
@@ -68,8 +69,28 @@ from .texts import (
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
+_security_middleware = SecurityMiddleware()
+router.message.outer_middleware(_security_middleware)
+router.callback_query.outer_middleware(_security_middleware)
 
 KeyboardBuilder = Callable[[bool], InlineKeyboardMarkup]
+
+
+async def _answer_job_rejected(
+    message: Message,
+    settings: UserSettings,
+    access: JobAccess,
+) -> None:
+    if access.reason == "user_busy":
+        key = "request_in_progress"
+        values: dict[str, object] = {}
+    elif access.reason == "pack_cooldown":
+        key = "pack_cooldown"
+        values = {"seconds": access.retry_after}
+    else:
+        key = "bot_busy"
+        values = {}
+    await message.answer(tr(settings.language, key, **values))
 
 
 def _language_is_selected(settings: UserSettings) -> bool:
@@ -758,7 +779,11 @@ async def _handle_id_lookup(
 
 @router.message(F.text | F.caption)
 async def handle_text(
-    message: Message, bot: Bot, db: Database, exports: ExportStore
+    message: Message,
+    bot: Bot,
+    db: Database,
+    exports: ExportStore,
+    protection: RequestProtection,
 ) -> None:
     if message.from_user is None:
         return
@@ -767,43 +792,48 @@ async def handle_text(
     if not _language_is_selected(settings):
         await _prompt_language(message, settings, db)
         return
-    if await _handle_pack_links(message, bot, db, exports, settings, text):
-        return
-    if await _handle_id_lookup(message, bot, db, exports, settings, text):
-        return
+    is_pack = bool(extract_pack_links(text))
+    async with protection.job(message.from_user.id, is_pack=is_pack) as access:
+        if not access.allowed:
+            await _answer_job_rejected(message, settings, access)
+            return
+        if await _handle_pack_links(message, bot, db, exports, settings, text):
+            return
+        if await _handle_id_lookup(message, bot, db, exports, settings, text):
+            return
 
-    entities = message.entities if message.text is not None else message.caption_entities
-    items = extract_emoji_items(text, entities)
-    items = await _enrich_custom_emoji(bot, items)
-    if settings.deduplicate:
-        items = deduplicate_emoji_items(items)
-    if not items:
-        await message.answer(tr(settings.language, "not_found"))
-        return
+        entities = message.entities if message.text is not None else message.caption_entities
+        items = extract_emoji_items(text, entities)
+        items = await _enrich_custom_emoji(bot, items)
+        if settings.deduplicate:
+            items = deduplicate_emoji_items(items)
+        if not items:
+            await message.answer(tr(settings.language, "not_found"))
+            return
 
-    standard = replace(settings, display_mode="standard")
-    header = [
-        f"{icons.tag(icons.SEARCH, '🔎')} "
-        f"<b>{tr(settings.language, 'found', count=len(items))}</b>",
-        "",
-    ]
-    copy_value = items[0].identifier if len(items) == 1 else None
-    preferred_lines = header + format_emoji_lines(items, settings)
-    standard_lines = header + format_emoji_lines(items, standard)
-    export_token = exports.put(
-        message.from_user.id,
-        "emoji_ids.txt",
-        html_lines_to_text(standard_lines),
-    )
-    await _send_chunks(
-        message,
-        preferred_lines,
-        standard_lines,
-        settings,
-        db,
-        copy_value=copy_value,
-        export_token=export_token,
-    )
+        standard = replace(settings, display_mode="standard")
+        header = [
+            f"{icons.tag(icons.SEARCH, '🔎')} "
+            f"<b>{tr(settings.language, 'found', count=len(items))}</b>",
+            "",
+        ]
+        copy_value = items[0].identifier if len(items) == 1 else None
+        preferred_lines = header + format_emoji_lines(items, settings)
+        standard_lines = header + format_emoji_lines(items, standard)
+        export_token = exports.put(
+            message.from_user.id,
+            "emoji_ids.txt",
+            html_lines_to_text(standard_lines),
+        )
+        await _send_chunks(
+            message,
+            preferred_lines,
+            standard_lines,
+            settings,
+            db,
+            copy_value=copy_value,
+            export_token=export_token,
+        )
 
 
 @router.message(F.chat.type == ChatType.PRIVATE)

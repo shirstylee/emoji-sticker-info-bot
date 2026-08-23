@@ -15,6 +15,7 @@ from .config import Config
 from .db import Database
 from .exports import ExportStore
 from .handlers import router
+from .security import RequestProtection
 
 
 async def _stop_on_windows_signal(
@@ -49,6 +50,7 @@ async def main() -> None:
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     export_store = ExportStore()
+    protection = RequestProtection()
 
     shutdown_requested: asyncio.Event | None = None
     shutdown_watcher: asyncio.Task[None] | None = None
@@ -93,8 +95,10 @@ async def main() -> None:
             bot,
             db=database,
             exports=export_store,
+            protection=protection,
             handle_signals=shutdown_requested is None,
             close_bot_session=False,
+            tasks_concurrency_limit=50,
         )
     finally:
         if shutdown_watcher is not None:

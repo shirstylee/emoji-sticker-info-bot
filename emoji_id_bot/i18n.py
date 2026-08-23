@@ -70,6 +70,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "sticker_count": "стикеров",
         "open_pack": "Открыть пак",
         "language_saved": "Язык изменён",
+        "rate_limited": "Слишком много действий. Подождите несколько секунд.",
+        "request_in_progress": "Предыдущий запрос ещё обрабатывается. Дождитесь результата.",
+        "bot_busy": "Сейчас обрабатывается много запросов. Повторите через несколько секунд.",
+        "pack_cooldown": "Паки можно отправлять не чаще одного раза в 8 секунд. Подождите ещё {seconds} сек.",
+        "private_only": "Для безопасности бот работает только в личном чате.",
     },
     "en": {
         "help": "How to use",
@@ -130,6 +135,11 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "sticker_count": "stickers",
         "open_pack": "Open pack",
         "language_saved": "Language changed",
+        "rate_limited": "Too many actions. Please wait a few seconds.",
+        "request_in_progress": "Your previous request is still being processed. Wait for the result.",
+        "bot_busy": "Many requests are being processed right now. Try again in a few seconds.",
+        "pack_cooldown": "Packs can be sent once every 8 seconds. Please wait {seconds} more seconds.",
+        "private_only": "For security, the bot works only in private chat.",
     },
 }
 
