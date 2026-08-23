@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-emoji-id-bot"
+version = "1.0.0"
+description = "Telegram bot that resolves custom emoji, sticker and sticker-set IDs"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiogram>=3.26,<4",
+    "aiosqlite>=0.21,<1",
+    "emoji>=2.14,<3",
+    "python-dotenv>=1.1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4,<10",
+    "pytest-asyncio>=1.2,<2",
+]
+
+[project.scripts]
+emoji-id-bot = "emoji_id_bot.main:run"
+
+[tool.setuptools.packages.find]
+include = ["emoji_id_bot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
