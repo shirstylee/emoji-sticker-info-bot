@@ -6,9 +6,12 @@ Telegram-бот для получения и обратного поиска ID 
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![aiogram](https://img.shields.io/badge/aiogram-3.x-2CA5E0?logo=telegram&logoColor=white)](https://docs.aiogram.dev/)
-[![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](tests)
+[![CI](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/actions/workflows/ci.yml/badge.svg)](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-AGPLv3-blue)](LICENSE)
 
 > Бот в Telegram: [@emoji_info_bot](https://t.me/emoji_info_bot)
+
+Бот работает в личных чатах через long polling. Для самостоятельного запуска достаточно Python 3.11+ и токена от BotFather; webhook, домен и Redis не нужны.
 
 ## 🚀 Возможности
 
@@ -71,11 +74,11 @@ Telegram-бот для получения и обратного поиска ID 
 ### 1. 📥 Клонирование
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/emoji-sticker-info-bot.git
+git clone https://github.com/shirstylee/Emoji-Sticker-Info-Bot.git emoji-sticker-info-bot
 cd emoji-sticker-info-bot
 ```
 
-Замените `YOUR_USERNAME` на имя своего аккаунта GitHub.
+Предварительно установите Git и Python 3.11 или новее. Выполняйте дальнейшие команды из корня проекта.
 
 ### 2. 🐍 Установка на Windows
 
@@ -99,6 +102,14 @@ LOG_LEVEL=INFO
 
 Файл `.env` содержит секретный токен, исключён из Git и не должен публиковаться.
 
+| Переменная | Назначение |
+|---|---|
+| `BOT_TOKEN` | Обязательный токен вашего бота от BotFather |
+| `DB_PATH` | Путь к SQLite-базе; по умолчанию `data/bot.db`, относительно папки запуска |
+| `LOG_LEVEL` | Уровень логирования; обычно `INFO` |
+
+Для самостоятельной копии создайте отдельного бота. Запускайте один polling-процесс на один токен.
+
 ### 4. ▶️ Запуск
 
 ```powershell
@@ -118,6 +129,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
 cp .env.example .env
+# Заполните BOT_TOKEN в .env перед запуском.
 python -m emoji_id_bot.main
 ```
 
@@ -130,7 +142,8 @@ python -m emoji_id_bot.main
 ## 🗂️ Структура проекта
 
 ```text
-Emoji & Sticker Info Bot/
+emoji-sticker-info-bot/
+├── .github/            # CI, Dependabot, формы Issues и pull request
 ├── emoji_id_bot/
 │   ├── config.py       # переменные окружения
 │   ├── db.py           # SQLite и настройки пользователей
@@ -148,11 +161,17 @@ Emoji & Sticker Info Bot/
 ├── Images/
 │   └── readme-cover.png
 ├── tests/              # автоматические тесты
+├── scripts/
+│   └── check_publication.py
 ├── data/               # локальная SQLite-база, не публикуется
 ├── .env.example
 ├── .gitattributes
 ├── .gitignore
 ├── GITHUB_SETUP.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── LICENSE
+├── NOTICE
 ├── pyproject.toml
 ├── run.ps1
 ├── setup.ps1
@@ -164,7 +183,14 @@ Emoji & Sticker Info Bot/
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe scripts/check_publication.py --history
+.\.venv\Scripts\python.exe -m build
+.\.venv\Scripts\python.exe -m pip_audit --local --skip-editable
 ```
+
+Тесты используют искусственные данные: токен и доступ к Telegram для них не нужны. Проверка зависимостей через `pip-audit` требует доступа к сервису сведений об уязвимостях.
+
+GitHub Actions настроен на тестирование Python 3.11–3.14 на Linux и Python 3.14 на Windows, проверку файлов и локальной Git-истории, сборку пакета и аудит зависимостей. Workflow запускается после push и pull request; новые зависимости и версии Actions предлагает Dependabot. Проверки устанавливают библиотеки в отдельную `.venv`.
 
 ## 💾 Хранение данных
 
@@ -177,7 +203,7 @@ Emoji & Sticker Info Bot/
 
 - бот отвечает только в личных чатах, поэтому чужие пользователи не могут нажимать кнопки вашего меню;
 - сообщения и inline-кнопки защищены локальным антифлудом;
-- один пользователь не может запустить несколько тяжёлых обработок одновременно;
+- один пользователь не может запустить несколько обработок текстовых запросов одновременно;
 - одновременно выполняется не более 8 обработок, а ссылки на паки имеют паузу 8 секунд;
 - диспетчер не создаёт больше 50 параллельных задач для входящих обновлений;
 - сообщения, отправленные другими ботами, игнорируются;
@@ -186,3 +212,21 @@ Emoji & Sticker Info Bot/
 - если токен попал в Git, сразу отзовите его через BotFather и создайте новый;
 - не добавляйте локальную базу `data/bot.db` в репозиторий;
 - подробная инструкция первой публикации находится в [`GITHUB_SETUP.md`](GITHUB_SETUP.md).
+
+По умолчанию допускается 8 сообщений и 15 нажатий кнопок за 5 секунд от пользователя. Ограничения хранятся в памяти одного процесса и сбрасываются при перезапуске.
+
+В одном запросе обрабатывается до 5 ссылок на паки и показывается до 20 стикеров по `file_id`. TXT-экспорт хранится до часа; кэш вмещает до 500 результатов на весь процесс, поэтому при высокой нагрузке старые экспорты могут исчезнуть раньше.
+
+Подробности и приватное сообщение об уязвимости — в [SECURITY.md](SECURITY.md).
+
+## 🤝 Обратная связь
+
+Ошибки и идеи: [Issues](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/issues). Правила участия: [CONTRIBUTING.md](CONTRIBUTING.md). Можно писать на русском или английском.
+
+## 📜 Лицензия и авторство
+
+Copyright © 2026 [shirstylee](https://github.com/shirstylee). Проект распространяется под [GNU AGPLv3](LICENSE) (`AGPL-3.0-only`); сведения об авторстве — в [NOTICE](NOTICE).
+
+Лицензия разрешает использование, копирование, изменение и коммерческую работу. При распространении сохраняйте уведомления об авторских правах и лицензию; изменённую версию распространяйте на условиях AGPLv3. Если пользователи взаимодействуют с вашей изменённой версией бота по сети, предложите им бесплатный доступ к соответствующему исходному коду — например, заметной ссылкой в меню или команде бота. Ссылка должна вести к исходникам именно вашей версии, включая изменения.
+
+Условия для распространения и сетевого использования приведены в разделах 4–6 и 13 [полного текста лицензии](https://www.gnu.org/licenses/agpl-3.0.html). Лицензия не запрещает все копии и форки.

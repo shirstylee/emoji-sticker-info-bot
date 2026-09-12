@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,10 @@ version = "1.0.0"
 description = "Telegram bot that resolves custom emoji, sticker and sticker-set IDs"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{name = "shirstylee"}]
+keywords = ["telegram", "emoji", "stickers", "aiogram", "bot"]
 dependencies = [
     "aiogram>=3.26,<4",
     "aiosqlite>=0.21,<1",
@@ -19,7 +23,13 @@ dependencies = [
 dev = [
     "pytest>=8.4,<10",
     "pytest-asyncio>=1.2,<2",
+    "build>=1.2,<2",
+    "pip-audit>=2.9,<3",
 ]
+
+[project.urls]
+Repository = "https://github.com/shirstylee/Emoji-Sticker-Info-Bot"
+Issues = "https://github.com/shirstylee/Emoji-Sticker-Info-Bot/issues"
 
 [project.scripts]
 emoji-id-bot = "emoji_id_bot.main:run"
@@ -30,4 +40,3 @@ include = ["emoji_id_bot*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-

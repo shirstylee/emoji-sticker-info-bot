@@ -1,0 +1,16 @@
+name: "💡 Идея / Feature request"
+description: "Предложить улучшение / Suggest an improvement"
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Какую задачу нужно решить? / What problem should this solve?"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Как это должно работать? / How should it work?"
+      description: "Опишите пример взаимодействия с ботом / Give an example interaction."
+    validations:
+      required: true

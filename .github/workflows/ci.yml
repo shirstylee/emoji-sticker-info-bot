@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: windows-latest
+            python: "3.14"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Check files and Git history
+        run: python scripts/check_publication.py --history
+      - name: Create isolated environment
+        shell: python
+        run: |
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          subprocess.check_call([sys.executable, "-m", "venv", ".venv"])
+          scripts = "Scripts" if os.name == "nt" else "bin"
+          with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as paths:
+              paths.write(str((Path(".venv") / scripts).resolve()) + "\n")
+      - name: Install project and test tools
+        run: python -m pip install -e ".[dev]"
+      - name: Run tests
+        run: python -m pytest
+      - name: Check dependency consistency
+        run: python -m pip check
+      - name: Build source and wheel distributions
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
+        run: python -m build
+      - name: Audit installed dependencies
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
+        run: python -m pip_audit --local --skip-editable --cache-dir .venv/pip-audit-cache

@@ -1,74 +1,67 @@
-# 🚀 Первая публикация на GitHub
+# 🚀 Открытие репозитория на GitHub
 
-Эта инструкция предназначена владельцу проекта. Команды выполняются из папки `Emoji & Sticker Info Bot`.
+Проект уже связан с [shirstylee/Emoji-Sticker-Info-Bot](https://github.com/shirstylee/Emoji-Sticker-Info-Bot), основная ветка — `main`. Повторно создавать репозиторий или выполнять `git init` не требуется.
 
-## 1. 🔐 Проверка секретных файлов
+## 1. 🔎 Проверка локальных файлов и истории
 
-Убедитесь, что `.gitignore` исключает токен, окружение и локальную базу:
+Выполните из папки `emoji-sticker-info-bot`:
 
 ```powershell
-git init
+.\setup.ps1
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe scripts/check_publication.py --history
+.\.venv\Scripts\python.exe -m pip_audit --local --skip-editable
 git check-ignore .env .venv data/bot.db
-```
-
-Команда должна вывести все три пути. Никогда не используйте `git add -f` для `.env` или `data/bot.db`.
-
-## 2. 👤 Настройка автора коммитов
-
-Настройки можно сохранить только для этого репозитория:
-
-```powershell
-git config user.name "YOUR_NAME"
-git config user.email "YOUR_EMAIL"
-```
-
-Замените значения на имя и email, привязанный к GitHub.
-
-## 3. 🌐 Создание репозитория
-
-1. Откройте [github.com/new](https://github.com/new).
-2. Укажите имя `emoji-sticker-info-bot`.
-3. Выберите `Public` или `Private`.
-4. Не добавляйте README, `.gitignore` и лицензию на стороне GitHub — они уже подготовлены локально.
-5. Нажмите **Create repository**.
-
-## 4. 📦 Первый коммит
-
-Перед добавлением файлов обязательно просмотрите список:
-
-```powershell
 git status --short
+```
+
+Проверка публикации читает рабочие файлы, Git-индекс и все локальные ветки/теги, включая старые версии удалённых файлов. Она ищет известные форматы токенов, приватных ключей и служебные файлы; значения секретов не выводятся. Наличие `.env` в `.gitignore` само по себе не защищает старые коммиты.
+
+Эта проверка не просматривает данные на GitHub, которых нет локально. Если есть другие удалённые ветки, сначала обновите локальные ссылки через `git fetch origin --prune --tags` и повторите её. Отдельно просмотрите вложения Issues, Actions-логи и артефакты, если они существуют.
+
+Имя и email авторов коммитов также станут публичными. Проверьте их локально:
+
+```powershell
+git log --all --format="%h %an <%ae>"
+```
+
+Для будущих коммитов можно указать GitHub noreply-адрес из [настроек email](https://github.com/settings/emails) через `git config user.email "YOUR_GITHUB_NOREPLY_EMAIL"`. Это не меняет старую историю.
+
+## 2. 📜 Лицензия
+
+В проект добавлены `LICENSE` (GNU AGPLv3), `NOTICE` и информация об авторстве. Лицензия позволяет форки и коммерческое использование, но требует сохранять уведомления об авторстве и соблюдать условия раскрытия исходников при распространении и сетевом использовании изменённых версий. Подробности — в [README](README.md#-лицензия-и-авторство).
+
+## 3. 📦 Сохранение подготовленных изменений
+
+```powershell
+git diff --check
+git diff
 git add .
-git status
-git commit -m "Initial release"
-git branch -M main
+git diff --cached --stat
+.\.venv\Scripts\python.exe scripts/check_publication.py --history
+git commit -m "chore: prepare repository for public release"
+git push origin main
 ```
 
-В списке не должно быть `.env`, `.venv`, `data/bot.db`, `__pycache__` или `*.egg-info`.
+Перед коммитом просмотрите список добавленных файлов. Никогда не добавляйте `.env`, `.venv` и пользовательские данные с `git add -f`.
 
-## 5. ⬆️ Подключение GitHub и отправка
+## 4. ✅ Проверки GitHub
 
-```powershell
-git remote add origin https://github.com/YOUR_USERNAME/emoji-sticker-info-bot.git
-git push -u origin main
-```
+После push откройте [Actions](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/actions) и дождитесь успешного workflow **CI**. Для тестов не нужен `BOT_TOKEN`; не добавляйте рабочий токен бота в GitHub Actions.
 
-Замените `YOUR_USERNAME` на имя аккаунта GitHub. Если remote уже существует:
+В **Settings → Advanced Security** включите доступные для репозитория Dependabot alerts, secret scanning, push protection и **Private vulnerability reporting**. Конфигурация Dependabot уже в проекте; эти переключатели на GitHub включаются отдельно. Некоторые возможности могут стать доступны после перехода в Public.
 
-```powershell
-git remote set-url origin https://github.com/YOUR_USERNAME/emoji-sticker-info-bot.git
-```
+## 5. 🌐 Открытие репозитория
 
-## 6. 🔄 Следующие обновления
+На странице репозитория откройте **Settings → General → Danger Zone → Change repository visibility**, выберите **Public** и подтвердите изменение. Это отдельное действие на GitHub — локальные файлы не меняют видимость репозитория.
 
-```powershell
-git status
-git add .
-git commit -m "Describe the update"
-git push
-```
+Перед подтверждением GitHub показывает последствия. Публичными становятся в том числе история коммитов и Actions-логи. [Официальная инструкция GitHub](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-repository-settings/setting-repository-visibility).
 
-## 🛡️ Если токен случайно опубликован
+После открытия проверьте отображение баннера, README и лицензии, работу формы приватного сообщения об уязвимости и доступные настройки защиты.
 
-Удаления файла из последующего коммита недостаточно: токен останется в истории Git. Сразу откройте BotFather, отзовите старый токен и выпустите новый. После этого обновите только локальный `.env`.
+## 🛡️ Если найден токен
 
+Сначала отзовите его через BotFather и замените только в локальном `.env`. Удаление из последнего коммита не убирает значение из истории. Не открывайте репозиторий с действующим токеном; очистку истории согласуйте отдельно, поскольку она меняет коммиты.
+
+Документация: [настройка приватных сообщений об уязвимостях](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/configure-vulnerability-reporting/configure-for-a-repository).

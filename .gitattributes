@@ -1,9 +1,13 @@
-* text=auto
+* text=auto eol=lf
 
 *.py text eol=lf
 *.md text eol=lf
 *.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
 *.example text eol=lf
+LICENSE text eol=lf
+NOTICE text eol=lf
 *.ps1 text eol=crlf
 
 *.png binary
@@ -11,4 +15,3 @@
 *.jpeg binary
 *.webp binary
 *.db binary
-

@@ -1,0 +1,13 @@
+include LICENSE NOTICE README.md .env.example
+include CONTRIBUTING.md SECURITY.md GITHUB_SETUP.md
+include setup.ps1 run.ps1
+recursive-include Images *.png
+recursive-include scripts *.py
+recursive-include tests *.py
+prune .venv
+prune data
+prune .git
+prune build
+prune dist
+global-exclude __pycache__ *.py[cod]
+exclude .env

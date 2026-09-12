@@ -12,4 +12,4 @@ if (-not (Test-Path -LiteralPath ".env")) {
 }
 
 & ".venv\Scripts\python.exe" -m emoji_id_bot.main
-
+exit $LASTEXITCODE
