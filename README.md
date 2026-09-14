@@ -1,12 +1,12 @@
-![Emoji & Sticker Info Bot](Images/readme-cover.png)
+![emoji-sticker-info-bot](Images/readme-cover.png)
 
-# 🙂 Emoji & Sticker Info Bot
+# 🙂 emoji-sticker-info-bot
 
 Telegram-бот для получения и обратного поиска ID обычных и Premium emoji, стикеров и целых паков. Бот умеет обрабатывать отдельные элементы, ссылки на паки и готовые идентификаторы, а результат можно детально настроить и экспортировать в TXT.
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![aiogram](https://img.shields.io/badge/aiogram-3.x-2CA5E0?logo=telegram&logoColor=white)](https://docs.aiogram.dev/)
-[![CI](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/actions/workflows/ci.yml/badge.svg)](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/actions/workflows/ci.yml)
+[![CI](https://github.com/shirstylee/emoji-sticker-info-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/shirstylee/emoji-sticker-info-bot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPLv3-blue)](LICENSE)
 
 > Бот в Telegram: [@emoji_info_bot](https://t.me/emoji_info_bot)
@@ -74,7 +74,7 @@ Telegram-бот для получения и обратного поиска ID 
 ### 1. 📥 Клонирование
 
 ```bash
-git clone https://github.com/shirstylee/Emoji-Sticker-Info-Bot.git emoji-sticker-info-bot
+git clone https://github.com/shirstylee/emoji-sticker-info-bot.git emoji-sticker-info-bot
 cd emoji-sticker-info-bot
 ```
 
@@ -221,7 +221,7 @@ GitHub Actions настроен на тестирование Python 3.11–3.14
 
 ## 🤝 Обратная связь
 
-Ошибки и идеи: [Issues](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/issues). Правила участия: [CONTRIBUTING.md](CONTRIBUTING.md). Можно писать на русском или английском.
+Ошибки и идеи: [Issues](https://github.com/shirstylee/emoji-sticker-info-bot/issues). Правила участия: [CONTRIBUTING.md](CONTRIBUTING.md). Можно писать на русском или английском.
 
 ## 📜 Лицензия и авторство
 

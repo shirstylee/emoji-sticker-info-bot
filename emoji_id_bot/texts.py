@@ -17,7 +17,7 @@ You can change the language later in Settings."""
 
 def main_text(language: str | None) -> str:
     if language_code(language) == "en":
-        return f"""{icons.tag(icons.BOT, "🤖")} <b>Emoji ID Bot</b>
+        return f"""{icons.tag(icons.BOT, "🤖")} <b>emoji-sticker-info-bot</b>
 
 {icons.tag(icons.COMMAND, "🔣")} <b>Send me:</b>
 • a standard or Premium emoji;
@@ -27,7 +27,7 @@ def main_text(language: str | None) -> str:
 • a <code>custom_emoji_id</code>, Unicode code or sticker <code>file_id</code> to display it.
 
 {icons.tag(icons.SEARCH, "🔎")} I will return every available ID. Standard emoji have no Telegram ID, so their Unicode code will be shown."""
-    return f"""{icons.tag(icons.BOT, "🤖")} <b>Emoji ID Bot</b>
+    return f"""{icons.tag(icons.BOT, "🤖")} <b>emoji-sticker-info-bot</b>
 
 {icons.tag(icons.COMMAND, "🔣")} <b>Отправьте мне:</b>
 • обычный или Premium emoji;

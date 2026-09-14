@@ -4,7 +4,7 @@
 
 ## Приватное сообщение / Private report
 
-Используйте [Report a vulnerability](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/security/advisories/new), если владелец включил private vulnerability reporting.
+Используйте [Report a vulnerability](https://github.com/shirstylee/emoji-sticker-info-bot/security/advisories/new), если владелец включил private vulnerability reporting.
 
 Если форма недоступна, создайте Issue только с просьбой предоставить приватный канал связи. Не публикуйте детали эксплуатации, токены или данные пользователей.
 

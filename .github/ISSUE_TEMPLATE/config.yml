@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: "🔒 Уязвимость / Security vulnerability"
-    url: https://github.com/shirstylee/Emoji-Sticker-Info-Bot/blob/main/SECURITY.md
+    url: https://github.com/shirstylee/emoji-sticker-info-bot/blob/main/SECURITY.md
     about: "Как сообщить о проблеме приватно / How to report a vulnerability privately"

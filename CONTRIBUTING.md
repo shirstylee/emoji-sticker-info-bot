@@ -1,6 +1,6 @@
 # 🤝 Участие в разработке
 
-Ошибки и предложения можно описывать на русском или английском в [Issues](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/issues). Для уязвимостей используйте [SECURITY.md](SECURITY.md).
+Ошибки и предложения можно описывать на русском или английском в [Issues](https://github.com/shirstylee/emoji-sticker-info-bot/issues). Для уязвимостей используйте [SECURITY.md](SECURITY.md).
 
 ## Локальная разработка
 

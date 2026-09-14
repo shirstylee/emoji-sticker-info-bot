@@ -1,6 +1,6 @@
 # 🚀 Открытие репозитория на GitHub
 
-Проект уже связан с [shirstylee/Emoji-Sticker-Info-Bot](https://github.com/shirstylee/Emoji-Sticker-Info-Bot), основная ветка — `main`. Повторно создавать репозиторий или выполнять `git init` не требуется.
+Проект уже связан с [shirstylee/emoji-sticker-info-bot](https://github.com/shirstylee/emoji-sticker-info-bot), основная ветка — `main`. Повторно создавать репозиторий или выполнять `git init` не требуется.
 
 ## 1. 🔎 Проверка локальных файлов и истории
 
@@ -48,7 +48,7 @@ git push origin main
 
 ## 4. ✅ Проверки GitHub
 
-После push откройте [Actions](https://github.com/shirstylee/Emoji-Sticker-Info-Bot/actions) и дождитесь успешного workflow **CI**. Для тестов не нужен `BOT_TOKEN`; не добавляйте рабочий токен бота в GitHub Actions.
+После push откройте [Actions](https://github.com/shirstylee/emoji-sticker-info-bot/actions) и дождитесь успешного workflow **CI**. Для тестов не нужен `BOT_TOKEN`; не добавляйте рабочий токен бота в GitHub Actions.
 
 В **Settings → Advanced Security** включите доступные для репозитория Dependabot alerts, secret scanning, push protection и **Private vulnerability reporting**. Конфигурация Dependabot уже в проекте; эти переключатели на GitHub включаются отдельно. Некоторые возможности могут стать доступны после перехода в Public.
 
