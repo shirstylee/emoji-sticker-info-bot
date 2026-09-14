@@ -4,7 +4,7 @@ import pytest
 
 from emoji_id_bot.exports import ExportStore
 from emoji_id_bot.handlers import _handle_id_lookup
-from emoji_id_bot.models import UserSettings
+from emoji_id_bot.models import ResultSettings
 
 
 class FakeMessage:
@@ -40,7 +40,7 @@ async def test_custom_and_unicode_ids_are_displayed() -> None:
         FakeBot(),
         object(),
         ExportStore(),
-        UserSettings(user_id=42, language="ru", button_icons=False),
+        ResultSettings(language="ru", button_icons=False),
         "6028346797368283073\nU+1F34F",
     )
     assert handled is True
@@ -58,7 +58,7 @@ async def test_sticker_file_id_sends_the_sticker() -> None:
         FakeBot(),
         object(),
         ExportStore(),
-        UserSettings(user_id=42, language="en", button_icons=False),
+        ResultSettings(language="en", button_icons=False),
         file_id,
     )
     assert handled is True

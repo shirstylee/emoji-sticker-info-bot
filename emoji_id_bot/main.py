@@ -12,6 +12,7 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 
 from .config import Config
+from .admin_state import AdminStateStorage
 from .db import Database
 from .exports import ExportStore
 from .handlers import router
@@ -47,7 +48,7 @@ async def main() -> None:
             link_preview_is_disabled=True,
         ),
     )
-    dispatcher = Dispatcher()
+    dispatcher = Dispatcher(storage=AdminStateStorage())
     dispatcher.include_router(router)
     export_store = ExportStore()
     protection = RequestProtection()
@@ -75,14 +76,12 @@ async def main() -> None:
         await bot.set_my_commands(
             [
                 BotCommand(command="start", description="Главное меню"),
-                BotCommand(command="settings", description="Настройки"),
                 BotCommand(command="help", description="Помощь и примеры"),
             ]
         )
         await bot.set_my_commands(
             [
                 BotCommand(command="start", description="Main menu"),
-                BotCommand(command="settings", description="Settings"),
                 BotCommand(command="help", description="Help and examples"),
             ],
             language_code="en",
@@ -96,6 +95,7 @@ async def main() -> None:
             db=database,
             exports=export_store,
             protection=protection,
+            admin_ids=config.admin_ids,
             handle_signals=shutdown_requested is None,
             close_bot_session=False,
             tasks_concurrency_limit=50,

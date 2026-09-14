@@ -7,11 +7,22 @@ SUPPORTED_LANGUAGES = ("ru", "en")
 
 
 def language_code(value: str | None) -> str:
-    return value if value in SUPPORTED_LANGUAGES else "ru"
+    normalized = (value or "").lower().split("-", 1)[0].split("_", 1)[0]
+    return normalized if normalized in SUPPORTED_LANGUAGES else "ru"
 
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "ru": {
+        "admin_panel": "Админ-панель",
+        "admins": "Администраторы",
+        "admin_add": "Добавить администратора",
+        "admin_remove": "Удалить",
+        "admin_only": "Эта функция доступна только администраторам.",
+        "protected_admin": "Администратор из .env. Доступ меняется только в ADMIN_IDS на сервере.",
+        "admin_added": "Администратор добавлен",
+        "admin_removed": "Администратор удалён",
+        "admin_exists": "Этот ID уже есть в списке администраторов.",
+        "admin_limit": "Достигнут лимит: 50 дополнительных администраторов.",
         "help": "Как пользоваться",
         "examples": "Примеры",
         "settings": "Настройки",
@@ -77,6 +88,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "private_only": "Для безопасности бот работает только в личном чате.",
     },
     "en": {
+        "admin_panel": "Admin panel",
+        "admins": "Administrators",
+        "admin_add": "Add administrator",
+        "admin_remove": "Remove",
+        "admin_only": "This feature is available to administrators only.",
+        "protected_admin": "Administrator from .env. Edit ADMIN_IDS on the server to change access.",
+        "admin_added": "Administrator added",
+        "admin_removed": "Administrator removed",
+        "admin_exists": "This ID is already an administrator.",
+        "admin_limit": "The limit of 50 additional administrators has been reached.",
         "help": "How to use",
         "examples": "Examples",
         "settings": "Settings",

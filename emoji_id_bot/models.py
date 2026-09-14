@@ -11,19 +11,19 @@ STICKER_ID_MODES = ("file", "unique", "both")
 
 
 @dataclass(slots=True)
-class UserSettings:
-    user_id: int
-    display_mode: str = "custom"
-    id_style: str = "brackets"
-    prefix_style: str = "number"
-    separator: str = "space"
+class ResultSettings:
+    display_mode: str = "standard"
+    id_style: str = "plain"
+    prefix_style: str = "none"
+    separator: str = "dash"
     sticker_id_mode: str = "file"
-    show_pack_title: bool = True
-    show_pack_link: bool = True
+    show_pack_title: bool = False
+    show_pack_link: bool = False
     show_details: bool = False
     deduplicate: bool = False
     button_icons: bool = True
     language: str | None = None
+    is_admin: bool = False
     space_after_prefix: bool = True
     spaces_around_dash: bool = True
     space_between_variants: bool = True

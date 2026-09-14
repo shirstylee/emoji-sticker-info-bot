@@ -1,81 +1,78 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import aiosqlite
 
-from .models import UserSettings
+from .models import (
+    DISPLAY_MODES, ID_STYLES, PREFIX_STYLES, SEPARATORS, STICKER_ID_MODES,
+    ResultSettings,
+)
 
 
-SETTING_COLUMNS = {
-    "language",
-    "display_mode",
-    "id_style",
-    "prefix_style",
-    "separator",
-    "sticker_id_mode",
-    "show_pack_title",
-    "show_pack_link",
-    "show_details",
-    "deduplicate",
-    "button_icons",
-    "space_after_prefix",
-    "spaces_around_dash",
-    "space_between_variants",
+CHOICES = {
+    "display_mode": DISPLAY_MODES,
+    "id_style": ID_STYLES,
+    "prefix_style": PREFIX_STYLES,
+    "separator": SEPARATORS,
+    "sticker_id_mode": STICKER_ID_MODES,
 }
+DEFAULTS = {
+    key: value for key, value in asdict(ResultSettings()).items()
+    if key not in {"language", "is_admin"}
+}
+BOOLEAN_COLUMNS = {key for key, value in DEFAULTS.items() if isinstance(value, bool)}
+SETTING_COLUMNS = set(DEFAULTS)
+MAX_ADMINS = 50
 
 
 class Database:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.connection: aiosqlite.Connection | None = None
+        self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = await aiosqlite.connect(self.path)
-        self.connection.row_factory = aiosqlite.Row
-        await self.connection.execute("PRAGMA journal_mode=WAL")
-        await self.connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_settings (
-                user_id INTEGER PRIMARY KEY,
-                language TEXT DEFAULT NULL,
-                display_mode TEXT NOT NULL DEFAULT 'custom',
-                id_style TEXT NOT NULL DEFAULT 'brackets',
-                prefix_style TEXT NOT NULL DEFAULT 'number',
-                separator TEXT NOT NULL DEFAULT 'space',
-                sticker_id_mode TEXT NOT NULL DEFAULT 'file',
-                show_pack_title INTEGER NOT NULL DEFAULT 1,
-                show_pack_link INTEGER NOT NULL DEFAULT 1,
-                show_details INTEGER NOT NULL DEFAULT 0,
-                deduplicate INTEGER NOT NULL DEFAULT 0,
-                button_icons INTEGER NOT NULL DEFAULT 1,
-                space_after_prefix INTEGER NOT NULL DEFAULT 1,
-                spaces_around_dash INTEGER NOT NULL DEFAULT 1,
-                space_between_variants INTEGER NOT NULL DEFAULT 1,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        try:
+            connection = self._connection()
+            await connection.execute("PRAGMA secure_delete=ON")
+            await connection.execute("PRAGMA journal_mode=WAL")
+            cursor = await connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_settings'"
             )
-            """
-        )
-        cursor = await self.connection.execute("PRAGMA table_info(user_settings)")
-        columns = {row[1] for row in await cursor.fetchall()}
-        if "language" not in columns:
-            await self.connection.execute(
-                "ALTER TABLE user_settings ADD COLUMN language TEXT DEFAULT NULL"
+            migrating = await cursor.fetchone() is not None
+            await cursor.close()
+            # Replace legacy individual settings with one shared configuration.
+            await connection.execute("DROP TABLE IF EXISTS user_settings")
+            await connection.execute(
+                "CREATE TABLE IF NOT EXISTS bot_settings ("
+                "singleton INTEGER PRIMARY KEY CHECK (singleton = 1), "
+                "settings TEXT NOT NULL)"
             )
-        boolean_migrations = {
-            "space_after_prefix",
-            "spaces_around_dash",
-            "space_between_variants",
-        }
-        for column in boolean_migrations - columns:
-            await self.connection.execute(
-                f"ALTER TABLE user_settings ADD COLUMN {column} "
-                "INTEGER NOT NULL DEFAULT 1"
+            await connection.execute(
+                "CREATE TABLE IF NOT EXISTS administrators (telegram_id INTEGER PRIMARY KEY)"
             )
-        await self.connection.commit()
+            await connection.execute(
+                "INSERT OR IGNORE INTO bot_settings VALUES (1, ?)",
+                (json.dumps(DEFAULTS),),
+            )
+            await connection.commit()
+            if migrating:
+                await connection.execute("VACUUM")
+                cursor = await connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                checkpoint = await cursor.fetchone()
+                await cursor.close()
+                if checkpoint and checkpoint[0]:
+                    raise RuntimeError("Stop other bot processes before migrating the database")
+        except BaseException:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         if self.connection is not None:
@@ -87,68 +84,87 @@ class Database:
             raise RuntimeError("Database is not connected")
         return self.connection
 
-    async def get_settings(self, user_id: int) -> UserSettings:
-        connection = self._connection()
-        await connection.execute(
-            "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,)
-        )
-        await connection.commit()
-        cursor = await connection.execute(
-            "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return UserSettings(user_id=user_id)
-        return UserSettings(
-            user_id=row["user_id"],
-            language=row["language"],
-            display_mode=row["display_mode"],
-            id_style=row["id_style"],
-            prefix_style=row["prefix_style"],
-            separator=row["separator"],
-            sticker_id_mode=row["sticker_id_mode"],
-            show_pack_title=bool(row["show_pack_title"]),
-            show_pack_link=bool(row["show_pack_link"]),
-            show_details=bool(row["show_details"]),
-            deduplicate=bool(row["deduplicate"]),
-            button_icons=bool(row["button_icons"]),
-            space_after_prefix=bool(row["space_after_prefix"]),
-            spaces_around_dash=bool(row["spaces_around_dash"]),
-            space_between_variants=bool(row["space_between_variants"]),
-        )
+    async def get_settings(self) -> ResultSettings:
+        async with self._lock:
+            return await self._read()
 
-    async def set_value(self, user_id: int, key: str, value: Any) -> UserSettings:
+    async def _read(self) -> ResultSettings:
+        async with self._connection().execute(
+            "SELECT settings FROM bot_settings WHERE singleton = 1"
+        ) as cursor:
+            row = await cursor.fetchone()
+        values = json.loads(row[0]) if row else {}
+        for key, value in values.items():
+            self._validate(key, value)
+        return ResultSettings(**values)
+
+    @staticmethod
+    def _validate(key: str, value: Any) -> None:
         if key not in SETTING_COLUMNS:
             raise ValueError(f"Unknown setting: {key}")
-        await self.get_settings(user_id)
-        connection = self._connection()
-        await connection.execute(
-            f"UPDATE user_settings SET {key} = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE user_id = ?",
-            (int(value) if isinstance(value, bool) else value, user_id),
-        )
-        await connection.commit()
-        return await self.get_settings(user_id)
+        if key in BOOLEAN_COLUMNS:
+            if type(value) is not bool:
+                raise ValueError(f"Setting must be boolean: {key}")
+        elif value not in CHOICES[key]:
+            raise ValueError(f"Invalid setting value: {key}")
 
-    async def toggle(self, user_id: int, key: str) -> UserSettings:
-        if key not in SETTING_COLUMNS:
-            raise ValueError(f"Unknown setting: {key}")
-        settings = await self.get_settings(user_id)
-        value = getattr(settings, key)
-        if not isinstance(value, bool):
+    async def _write(self, settings: ResultSettings) -> ResultSettings:
+        values = {key: getattr(settings, key) for key in SETTING_COLUMNS}
+        await self._connection().execute(
+            "UPDATE bot_settings SET settings = ? WHERE singleton = 1",
+            (json.dumps(values),),
+        )
+        await self._connection().commit()
+        return settings
+
+    async def set_value(self, key: str, value: Any) -> ResultSettings:
+        self._validate(key, value)
+        async with self._lock:
+            settings = await self._read()
+            setattr(settings, key, value)
+            return await self._write(settings)
+
+    async def toggle(self, key: str) -> ResultSettings:
+        if key not in BOOLEAN_COLUMNS:
             raise ValueError(f"Setting is not boolean: {key}")
-        return await self.set_value(user_id, key, not value)
+        async with self._lock:
+            settings = await self._read()
+            setattr(settings, key, not getattr(settings, key))
+            return await self._write(settings)
 
-    async def reset(self, user_id: int) -> UserSettings:
-        language = (await self.get_settings(user_id)).language
-        connection = self._connection()
-        await connection.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
-        await connection.execute(
-            "INSERT INTO user_settings (user_id, language) VALUES (?, ?)",
-            (user_id, language),
-        )
-        await connection.commit()
-        return await self.get_settings(user_id)
+    async def reset(self) -> ResultSettings:
+        async with self._lock:
+            return await self._write(ResultSettings())
 
-    async def export_settings(self, user_id: int) -> dict[str, Any]:
-        return asdict(await self.get_settings(user_id))
+    async def is_admin(self, telegram_id: int) -> bool:
+        async with self._connection().execute(
+            "SELECT 1 FROM administrators WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+    async def list_admins(self) -> list[int]:
+        async with self._connection().execute(
+            "SELECT telegram_id FROM administrators ORDER BY telegram_id"
+        ) as cursor:
+            return [row[0] for row in await cursor.fetchall()]
+
+    async def add_admin(self, telegram_id: int) -> bool:
+        if type(telegram_id) is not int or not 0 < telegram_id < 2**52:
+            raise ValueError("Invalid Telegram ID")
+        async with self._lock:
+            if await self.is_admin(telegram_id):
+                return False
+            if len(await self.list_admins()) >= MAX_ADMINS:
+                raise ValueError("Administrator limit reached")
+            await self._connection().execute(
+                "INSERT INTO administrators VALUES (?)", (telegram_id,)
+            )
+            await self._connection().commit()
+            return True
+
+    async def remove_admin(self, telegram_id: int) -> None:
+        async with self._lock:
+            await self._connection().execute(
+                "DELETE FROM administrators WHERE telegram_id = ?", (telegram_id,)
+            )
+            await self._connection().commit()

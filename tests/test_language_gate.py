@@ -1,10 +1,11 @@
-from emoji_id_bot.handlers import _language_is_selected
-from emoji_id_bot.models import UserSettings
+import pytest
+
+from emoji_id_bot.i18n import language_code
 
 
-def test_language_is_required_until_supported_value_is_saved() -> None:
-    assert _language_is_selected(UserSettings(user_id=1)) is False
-    assert _language_is_selected(UserSettings(user_id=1, language="")) is False
-    assert _language_is_selected(UserSettings(user_id=1, language="de")) is False
-    assert _language_is_selected(UserSettings(user_id=1, language="ru")) is True
-    assert _language_is_selected(UserSettings(user_id=1, language="en")) is True
+@pytest.mark.parametrize("value, expected", [
+    (None, "ru"), ("", "ru"), ("de", "ru"), ("ru", "ru"),
+    ("en", "en"), ("en-US", "en"), ("EN_gb", "en"),
+])
+def test_locale_is_resolved_without_onboarding(value, expected):
+    assert language_code(value) == expected

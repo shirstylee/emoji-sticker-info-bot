@@ -8,7 +8,9 @@ from aiogram import Bot, F, Router
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, Message, User
 from aiogram.utils.chat_action import ChatActionSender
 
 from . import icons
@@ -29,11 +31,13 @@ from .formatters import (
     sticker_from_telegram,
     strip_custom_emoji_tags,
 )
-from .i18n import SUPPORTED_LANGUAGES, tr
+from .i18n import language_code, tr
 from .keyboards import (
     appearance_keyboard,
     back_keyboard,
-    language_keyboard,
+    admin_keyboard,
+    admins_keyboard,
+    admin_confirm_keyboard,
     main_keyboard,
     pack_settings_keyboard,
     reset_keyboard,
@@ -49,16 +53,18 @@ from .models import (
     STICKER_ID_MODES,
     EmojiItem,
     StickerItem,
-    UserSettings,
+    ResultSettings,
 )
 from .security import JobAccess, RequestProtection, SecurityMiddleware
 from .texts import (
-    LANGUAGE_PROMPT_TEXT,
+    admin_text,
+    admins_text,
+    admin_prompt_text,
+    admin_confirm_text,
     about_text,
     appearance_text,
     examples_text,
     help_text,
-    language_settings_text,
     main_text,
     pack_settings_text,
     reset_text,
@@ -78,7 +84,7 @@ KeyboardBuilder = Callable[[bool], InlineKeyboardMarkup]
 
 async def _answer_job_rejected(
     message: Message,
-    settings: UserSettings,
+    settings: ResultSettings,
     access: JobAccess,
 ) -> None:
     if access.reason == "user_busy":
@@ -93,27 +99,25 @@ async def _answer_job_rejected(
     await message.answer(tr(settings.language, key, **values))
 
 
-def _language_is_selected(settings: UserSettings) -> bool:
-    return settings.language in SUPPORTED_LANGUAGES
+class AdminInput(StatesGroup):
+    telegram_id = State()
 
 
-async def _prompt_language(
-    message: Message, settings: UserSettings, db: Database
-) -> None:
-    await _answer_menu(
-        message,
-        LANGUAGE_PROMPT_TEXT,
-        lambda use_icons: language_keyboard(use_icons, origin="start"),
-        settings,
-        db,
+async def _is_admin(db: Database, user_id: int, admin_ids: frozenset[int]) -> bool:
+    return user_id in admin_ids or await db.is_admin(user_id)
+
+
+async def _get_settings(db: Database, user: User, admin_ids: frozenset[int]) -> ResultSettings:
+    return replace(
+        await db.get_settings(),
+        language=language_code(getattr(user, "language_code", None)),
+        is_admin=await _is_admin(db, user.id, admin_ids),
     )
 
 
-async def _disable_icons(db: Database, settings: UserSettings) -> UserSettings:
-    if settings.button_icons:
-        updated = await db.set_value(settings.user_id, "button_icons", False)
-        settings.button_icons = False
-        return updated
+async def _disable_icons(db: Database, settings: ResultSettings) -> ResultSettings:
+    # A Telegram rendering fallback must not change the shared configuration.
+    settings.button_icons = False
     return settings
 
 
@@ -121,11 +125,11 @@ async def _answer_menu(
     message: Message,
     text: str,
     builder: KeyboardBuilder,
-    settings: UserSettings,
+    settings: ResultSettings,
     db: Database,
 ) -> None:
     try:
-        await message.answer(text, reply_markup=builder(settings.button_icons))
+        await message.answer(text, reply_markup=builder(settings.button_icons or settings.is_admin))
     except TelegramBadRequest:
         if settings.button_icons:
             try:
@@ -143,14 +147,14 @@ async def _edit_menu(
     callback: CallbackQuery,
     text: str,
     builder: KeyboardBuilder,
-    settings: UserSettings,
+    settings: ResultSettings,
     db: Database,
 ) -> None:
     message = callback.message
     if not isinstance(message, Message):
         return
     try:
-        await message.edit_text(text, reply_markup=builder(settings.button_icons))
+        await message.edit_text(text, reply_markup=builder(settings.button_icons or settings.is_admin))
     except TelegramBadRequest as error:
         if "message is not modified" in str(error).lower():
             return
@@ -167,7 +171,7 @@ async def _edit_menu(
         await _disable_icons(db, settings)
 
 
-def _copy_id(sticker: StickerItem, settings: UserSettings) -> str:
+def _copy_id(sticker: StickerItem, settings: ResultSettings) -> str:
     if sticker.custom_emoji_id:
         return sticker.custom_emoji_id
     if settings.sticker_id_mode == "unique":
@@ -179,7 +183,7 @@ async def _send_chunks(
     message: Message,
     preferred_lines: list[str],
     standard_lines: list[str],
-    settings: UserSettings,
+    settings: ResultSettings,
     db: Database,
     *,
     copy_value: str | None = None,
@@ -211,6 +215,7 @@ async def _send_chunks(
                 copy_value if is_last else None,
                 export_token if is_last else None,
                 settings.language,
+                is_admin=settings.is_admin,
             )
             if is_last
             else None
@@ -227,6 +232,7 @@ async def _send_chunks(
                             copy_value if is_last else None,
                             export_token if is_last else None,
                             settings.language,
+                            is_admin=settings.is_admin,
                         ),
                     )
                     settings = await _disable_icons(db, settings)
@@ -241,6 +247,7 @@ async def _send_chunks(
                         copy_value if is_last else None,
                         export_token if is_last else None,
                         settings.language,
+                        is_admin=settings.is_admin,
                     )
                     if is_last
                     else None,
@@ -253,30 +260,28 @@ async def _send_chunks(
 
 
 @router.message(CommandStart())
-async def command_start(message: Message, db: Database) -> None:
+async def command_start(message: Message, db: Database, state: FSMContext,
+                        admin_ids: frozenset[int] = frozenset()) -> None:
     if message.from_user is None:
         return
-    settings = await db.get_settings(message.from_user.id)
-    if not _language_is_selected(settings):
-        await _prompt_language(message, settings, db)
-        return
+    await state.clear()
+    settings = await _get_settings(db, message.from_user, admin_ids)
     await _answer_menu(
         message,
         main_text(settings.language),
-        lambda use_icons: main_keyboard(use_icons, settings.language),
+        lambda use_icons: main_keyboard(use_icons, settings.language, is_admin=settings.is_admin),
         settings,
         db,
     )
 
 
 @router.message(Command("help"))
-async def command_help(message: Message, db: Database) -> None:
+async def command_help(message: Message, db: Database, state: FSMContext,
+                       admin_ids: frozenset[int] = frozenset()) -> None:
     if message.from_user is None:
         return
-    settings = await db.get_settings(message.from_user.id)
-    if not _language_is_selected(settings):
-        await _prompt_language(message, settings, db)
-        return
+    await state.clear()
+    settings = await _get_settings(db, message.from_user, admin_ids)
     await _answer_menu(
         message,
         help_text(settings.language),
@@ -286,62 +291,44 @@ async def command_help(message: Message, db: Database) -> None:
     )
 
 
-@router.message(Command("settings"))
-async def command_settings(message: Message, db: Database) -> None:
+@router.message(Command("admin", "settings"))
+async def command_admin(message: Message, db: Database, state: FSMContext,
+                        admin_ids: frozenset[int] = frozenset()) -> None:
     if message.from_user is None:
         return
-    settings = await db.get_settings(message.from_user.id)
-    if not _language_is_selected(settings):
-        await _prompt_language(message, settings, db)
+    await state.clear()
+    if message.chat.type != ChatType.PRIVATE or not await _is_admin(db, message.from_user.id, admin_ids):
+        await message.answer(tr(message.from_user.language_code, "admin_only"))
         return
+    settings = await _get_settings(db, message.from_user, admin_ids)
     await _answer_menu(
         message,
-        settings_text(settings),
-        lambda icons: settings_keyboard(settings, icons),
+        admin_text(settings.language),
+        lambda use_icons: admin_keyboard(use_icons, settings.language),
         settings,
         db,
     )
 
 
 @router.callback_query()
-async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore) -> None:
+async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
+                    state: FSMContext, admin_ids: frozenset[int] = frozenset()) -> None:
     if callback.from_user is None or not callback.data:
         return
     user_id = callback.from_user.id
     data = callback.data
-    settings = await db.get_settings(user_id)
-
-    if data.startswith("lang:"):
-        parts = data.split(":", 2)
-        if len(parts) != 3 or parts[1] not in SUPPORTED_LANGUAGES:
-            await callback.answer(tr(settings.language, "unknown_setting"), show_alert=True)
-            return
-        language, origin = parts[1], parts[2]
-        settings = await db.set_value(user_id, "language", language)
-        if origin == "settings":
-            await _edit_menu(
-                callback,
-                settings_text(settings),
-                lambda use_icons: settings_keyboard(settings, use_icons),
-                settings,
-                db,
-            )
-        else:
-            await _edit_menu(
-                callback,
-                main_text(language),
-                lambda use_icons: main_keyboard(use_icons, language),
-                settings,
-                db,
-            )
-        await callback.answer(tr(language, "language_saved"))
+    if (not isinstance(callback.message, Message)
+            or callback.message.chat.type != ChatType.PRIVATE
+            or callback.message.chat.id != user_id):
+        await callback.answer(tr(callback.from_user.language_code, "private_only"), show_alert=True)
         return
-
-    if not _language_is_selected(settings):
-        if isinstance(callback.message, Message):
-            await _prompt_language(callback.message, settings, db)
-        await callback.answer()
+    public = data in {"menu:main", "menu:help", "menu:examples", "menu:about"} or data.startswith("export:")
+    if not public and not await _is_admin(db, user_id, admin_ids):
+        await state.clear()
+        await callback.answer(tr(callback.from_user.language_code, "admin_only"), show_alert=True)
         return
+    settings = await _get_settings(db, callback.from_user, admin_ids)
+    await state.clear()
 
     if data.startswith("export:"):
         item = exports.get(data.split(":", 1)[1], user_id)
@@ -367,11 +354,53 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
     notice: str | None = None
 
     try:
-        if data == "menu:main":
+        if data == "admin:main":
+            await _edit_menu(callback, admin_text(language),
+                             lambda use_icons: admin_keyboard(use_icons, language), settings, db)
+        elif data == "admin:list":
+            extra = await db.list_admins()
+            await _edit_menu(callback, admins_text(admin_ids, extra, language),
+                             lambda use_icons: admins_keyboard(admin_ids, extra, use_icons, language), settings, db)
+        elif data == "admin:add":
+            await _edit_menu(callback, admin_prompt_text(language),
+                             lambda use_icons: back_keyboard(use_icons, "admins", language), settings, db)
+            await state.set_state(AdminInput.telegram_id)
+        elif data.startswith(("admin:confirm_add:", "admin:remove:", "admin:confirm_remove:")):
+            action, raw_id = data.rsplit(":", 1)
+            if (action not in {"admin:confirm_add", "admin:remove", "admin:confirm_remove"}
+                    or not raw_id.isascii() or not raw_id.isdigit() or not 0 < int(raw_id) < 2**52):
+                notice = tr(language, "unknown_setting")
+                return
+            target_id = int(raw_id)
+            if target_id in admin_ids:
+                notice = tr(language, "protected_admin")
+                return
+            if action == "admin:remove":
+                await _edit_menu(callback, admin_confirm_text(target_id, "remove", language),
+                                 lambda use_icons: admin_confirm_keyboard(target_id, "remove", use_icons, language), settings, db)
+            else:
+                if action == "admin:confirm_add":
+                    try:
+                        added = await db.add_admin(target_id)
+                    except ValueError:
+                        notice = tr(language, "admin_limit")
+                        return
+                    notice = tr(language, "admin_added" if added else "admin_exists")
+                else:
+                    await db.remove_admin(target_id)
+                    notice = tr(language, "admin_removed")
+                if not await _is_admin(db, user_id, admin_ids):
+                    await _edit_menu(callback, main_text(language),
+                                     lambda use_icons: main_keyboard(use_icons, language), settings, db)
+                else:
+                    extra = await db.list_admins()
+                    await _edit_menu(callback, admins_text(admin_ids, extra, language),
+                                     lambda use_icons: admins_keyboard(admin_ids, extra, use_icons, language), settings, db)
+        elif data == "menu:main":
             await _edit_menu(
                 callback,
                 main_text(language),
-                lambda use_icons: main_keyboard(use_icons, language),
+                lambda use_icons: main_keyboard(use_icons, language, is_admin=settings.is_admin),
                 settings,
                 db,
             )
@@ -431,19 +460,6 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
                 settings,
                 db,
             )
-        elif data == "settings:language":
-            await _edit_menu(
-                callback,
-                language_settings_text(language),
-                lambda use_icons: language_keyboard(
-                    use_icons,
-                    current=language,
-                    origin="settings",
-                    include_back=True,
-                ),
-                settings,
-                db,
-            )
         elif data == "settings:reset":
             await _edit_menu(
                 callback,
@@ -453,8 +469,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
                 db,
             )
         elif data == "settings:reset_confirm":
-            settings = await db.reset(user_id)
-            language = settings.language
+            settings = replace(await db.reset(), language=language, is_admin=True)
             notice = tr(language, "settings_reset")
             await _edit_menu(
                 callback,
@@ -464,6 +479,9 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
                 db,
             )
         elif data.startswith("set:"):
+            if len(data.split(":")) != 3:
+                notice = tr(language, "unknown_setting")
+                return
             _, key, value = data.split(":", 2)
             allowed = {
                 "display_mode": DISPLAY_MODES,
@@ -475,7 +493,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
             if key not in allowed or value not in allowed[key]:
                 await callback.answer(tr(language, "unknown_setting"), show_alert=True)
                 return
-            settings = await db.set_value(user_id, key, value)
+            settings = replace(await db.set_value(key, value), language=language, is_admin=True)
             if key in {"display_mode", "id_style", "prefix_style", "separator"}:
                 await _edit_menu(
                     callback,
@@ -506,7 +524,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
             }:
                 await callback.answer(tr(language, "unknown_setting"), show_alert=True)
                 return
-            settings = await db.toggle(user_id, key)
+            settings = replace(await db.toggle(key), language=language, is_admin=True)
             if key in {
                 "space_after_prefix",
                 "spaces_around_dash",
@@ -545,23 +563,54 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore)
             pass
 
 
+@router.message(Command("cancel"))
+async def cancel_admin_input(message: Message, db: Database, state: FSMContext,
+                             admin_ids: frozenset[int] = frozenset()) -> None:
+    await state.clear()
+    await command_start(message, db, state, admin_ids)
+
+
+@router.message(AdminInput.telegram_id)
+async def receive_admin_id(message: Message, db: Database, state: FSMContext,
+                           admin_ids: frozenset[int] = frozenset()) -> None:
+    if message.from_user is None:
+        return
+    language = language_code(message.from_user.language_code)
+    if message.chat.type != ChatType.PRIVATE or not await _is_admin(db, message.from_user.id, admin_ids):
+        await state.clear()
+        await message.answer(tr(language, "admin_only"))
+        return
+    raw_id = (message.text or "").strip()
+    if not raw_id.isascii() or not raw_id.isdigit() or not 0 < int(raw_id) < 2**52:
+        settings = await _get_settings(db, message.from_user, admin_ids)
+        await _answer_menu(message, admin_prompt_text(language),
+                           lambda use_icons: back_keyboard(use_icons, "admins", language), settings, db)
+        return
+    target_id = int(raw_id)
+    if await _is_admin(db, target_id, admin_ids):
+        settings = await _get_settings(db, message.from_user, admin_ids)
+        await _answer_menu(
+            message,
+            f"{icons.tag(icons.INFO, 'ℹ️')} <blockquote>{tr(language, 'admin_exists')}</blockquote>",
+            lambda use_icons: back_keyboard(use_icons, "admins", language), settings, db,
+        )
+        return
+    await state.clear()
+    settings = await _get_settings(db, message.from_user, admin_ids)
+    await _answer_menu(message, admin_confirm_text(target_id, "add", language),
+                       lambda use_icons: admin_confirm_keyboard(target_id, "add", use_icons, language), settings, db)
+
+
 @router.message(F.sticker)
-async def handle_sticker(message: Message, db: Database, exports: ExportStore) -> None:
+async def handle_sticker(message: Message, db: Database, exports: ExportStore,
+                         admin_ids: frozenset[int] = frozenset()) -> None:
     if message.from_user is None or message.sticker is None:
         return
-    settings = await db.get_settings(message.from_user.id)
-    if not _language_is_selected(settings):
-        await _prompt_language(message, settings, db)
-        return
+    settings = await _get_settings(db, message.from_user, admin_ids)
     sticker = sticker_from_telegram(message.sticker)
     standard = replace(settings, display_mode="standard")
-    header = [
-        f"{icons.tag(icons.CODE, '🔨')} "
-        f"<b>{tr(settings.language, 'sticker_id_heading')}</b>",
-        "",
-    ]
-    preferred_lines = header + format_sticker_lines([sticker], settings, compact=False)
-    standard_lines = header + format_sticker_lines([sticker], standard, compact=False)
+    preferred_lines = format_sticker_lines([sticker], settings, compact=False)
+    standard_lines = format_sticker_lines([sticker], standard, compact=False)
     export_token = exports.put(
         message.from_user.id,
         "sticker_id.txt",
@@ -594,7 +643,7 @@ async def _handle_pack_links(
     bot: Bot,
     db: Database,
     exports: ExportStore,
-    settings: UserSettings,
+    settings: ResultSettings,
     text: str,
 ) -> bool:
     links = extract_pack_links(text)
@@ -701,7 +750,7 @@ async def _handle_id_lookup(
     bot: Bot,
     db: Database,
     exports: ExportStore,
-    settings: UserSettings,
+    settings: ResultSettings,
     text: str,
 ) -> bool:
     identifiers = extract_telegram_ids(text)
@@ -738,14 +787,12 @@ async def _handle_id_lookup(
 
     emoji_items = unicode_items + resolved_custom
     if emoji_items:
+        # Reverse lookup previews the requested asset, not just its fallback glyph.
+        if resolved_custom and settings.display_mode == "standard":
+            settings = replace(settings, display_mode="custom")
         standard = replace(settings, display_mode="standard")
-        header = [
-            f"{icons.tag(icons.SEARCH, '🔎')} "
-            f"<b>{tr(settings.language, 'id_lookup_heading', count=len(emoji_items))}</b>",
-            "",
-        ]
-        preferred_lines = header + format_emoji_lines(emoji_items, settings)
-        standard_lines = header + format_emoji_lines(emoji_items, standard)
+        preferred_lines = format_emoji_lines(emoji_items, settings)
+        standard_lines = format_emoji_lines(emoji_items, standard)
         export_token = exports.put(
             message.from_user.id,
             "resolved_emoji_ids.txt",
@@ -784,14 +831,12 @@ async def handle_text(
     db: Database,
     exports: ExportStore,
     protection: RequestProtection,
+    admin_ids: frozenset[int] = frozenset(),
 ) -> None:
     if message.from_user is None:
         return
     text = message.text or message.caption or ""
-    settings = await db.get_settings(message.from_user.id)
-    if not _language_is_selected(settings):
-        await _prompt_language(message, settings, db)
-        return
+    settings = await _get_settings(db, message.from_user, admin_ids)
     is_pack = bool(extract_pack_links(text))
     async with protection.job(message.from_user.id, is_pack=is_pack) as access:
         if not access.allowed:
@@ -812,14 +857,9 @@ async def handle_text(
             return
 
         standard = replace(settings, display_mode="standard")
-        header = [
-            f"{icons.tag(icons.SEARCH, '🔎')} "
-            f"<b>{tr(settings.language, 'found', count=len(items))}</b>",
-            "",
-        ]
         copy_value = items[0].identifier if len(items) == 1 else None
-        preferred_lines = header + format_emoji_lines(items, settings)
-        standard_lines = header + format_emoji_lines(items, standard)
+        preferred_lines = format_emoji_lines(items, settings)
+        standard_lines = format_emoji_lines(items, standard)
         export_token = exports.put(
             message.from_user.id,
             "emoji_ids.txt",
@@ -837,11 +877,9 @@ async def handle_text(
 
 
 @router.message(F.chat.type == ChatType.PRIVATE)
-async def unsupported_private_message(message: Message, db: Database) -> None:
+async def unsupported_private_message(message: Message, db: Database,
+                                       admin_ids: frozenset[int] = frozenset()) -> None:
     if message.from_user is None:
         return
-    settings = await db.get_settings(message.from_user.id)
-    if not _language_is_selected(settings):
-        await _prompt_language(message, settings, db)
-        return
+    settings = await _get_settings(db, message.from_user, admin_ids)
     await message.answer(tr(settings.language, "unsupported"))

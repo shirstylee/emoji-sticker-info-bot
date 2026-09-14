@@ -6,13 +6,13 @@ from collections.abc import Iterable
 
 from . import icons
 from .i18n import language_code, tr
-from .models import EmojiItem, StickerItem, UserSettings
+from .models import EmojiItem, StickerItem, ResultSettings
 
 
 MAX_MESSAGE_LENGTH = 3900
 
 
-def _prefix(index: int, settings: UserSettings) -> str:
+def _prefix(index: int, settings: ResultSettings) -> str:
     if settings.prefix_style == "number":
         return f"{index})"
     if settings.prefix_style == "bullet":
@@ -20,9 +20,9 @@ def _prefix(index: int, settings: UserSettings) -> str:
     return ""
 
 
-def _separator(settings: UserSettings) -> str:
+def _separator(settings: ResultSettings) -> str:
     if settings.separator == "dash":
-        return " — " if settings.spaces_around_dash else "—"
+        return " - " if settings.spaces_around_dash else "-"
     if settings.separator == "newline":
         return "\n"
     return " "
@@ -54,7 +54,7 @@ def _safe_plain_identifier(identifier: str) -> str:
     return f"{escaped[:midpoint]}&#8203;{escaped[midpoint:]}"
 
 
-def _id(identifier: str, settings: UserSettings) -> str:
+def _id(identifier: str, settings: ResultSettings) -> str:
     if settings.id_style == "code":
         return f"<code>{html.escape(identifier)}</code>"
     escaped = _safe_plain_identifier(identifier)
@@ -63,7 +63,7 @@ def _id(identifier: str, settings: UserSettings) -> str:
     return f"[{escaped}]"
 
 
-def _visual(value: str, custom_id: str | None, settings: UserSettings) -> str:
+def _visual(value: str, custom_id: str | None, settings: ResultSettings) -> str:
     escaped = html.escape(value or "⭐")
     if custom_id and settings.display_mode in {"custom", "both"}:
         custom = f'<tg-emoji emoji-id="{html.escape(custom_id)}">{escaped}</tg-emoji>'
@@ -74,22 +74,21 @@ def _visual(value: str, custom_id: str | None, settings: UserSettings) -> str:
     return escaped
 
 
-def _prefix_and_visual(prefix: str, visual: str, settings: UserSettings) -> str:
+def _prefix_and_visual(prefix: str, visual: str, settings: ResultSettings) -> str:
     if not prefix:
         return visual
     gap = " " if settings.space_after_prefix else ""
     return f"{prefix}{gap}{visual}"
 
 
-def format_emoji_lines(items: Iterable[EmojiItem], settings: UserSettings) -> list[str]:
+def format_emoji_lines(items: Iterable[EmojiItem], settings: ResultSettings) -> list[str]:
     lines: list[str] = []
     for index, item in enumerate(items, start=1):
         prefix = _prefix(index, settings)
         visual = _visual(item.value, item.identifier if item.kind == "custom" else None, settings)
         identifier = _id(item.identifier, settings)
         left = _prefix_and_visual(prefix, visual, settings)
-        label = "" if item.kind == "custom" else "Unicode: "
-        lines.append(f"{left}{_separator(settings)}{label}{identifier}".strip())
+        lines.append(f"{left}{_separator(settings)}{identifier}".strip())
         if settings.show_details and item.set_name:
             lines.append(
                 f"   {tr(settings.language, 'pack')}: <code>{html.escape(item.set_name)}</code>"
@@ -114,7 +113,7 @@ def sticker_from_telegram(sticker: object) -> StickerItem:
 
 
 def format_sticker_lines(
-    stickers: Iterable[StickerItem], settings: UserSettings, *, compact: bool
+    stickers: Iterable[StickerItem], settings: ResultSettings, *, compact: bool
 ) -> list[str]:
     lines: list[str] = []
     for index, sticker in enumerate(stickers, start=1):
@@ -136,9 +135,9 @@ def format_sticker_lines(
                 lines.append(f"   unique_id: <code>{html.escape(sticker.file_unique_id)}</code>")
             else:
                 lines.append(f"   unique_id: <code>{html.escape(sticker.file_unique_id)}</code>")
-        elif settings.sticker_id_mode == "file" and sticker.custom_emoji_id and not compact:
+        elif settings.sticker_id_mode == "file" and sticker.custom_emoji_id and not compact and settings.show_details:
             lines.append(f"   file_id: <code>{html.escape(sticker.file_id)}</code>")
-        elif settings.sticker_id_mode == "unique" and sticker.custom_emoji_id and not compact:
+        elif settings.sticker_id_mode == "unique" and sticker.custom_emoji_id and not compact and settings.show_details:
             lines.append(f"   unique_id: <code>{html.escape(sticker.file_unique_id)}</code>")
 
         if settings.show_details:
@@ -174,7 +173,7 @@ def pack_header(
     count: int,
     sticker_type: str,
     url: str,
-    settings: UserSettings,
+    settings: ResultSettings,
 ) -> list[str]:
     lines: list[str] = []
     if settings.show_pack_title:

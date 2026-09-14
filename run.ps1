@@ -8,7 +8,7 @@ if (-not (Test-Path -LiteralPath ".venv\Scripts\python.exe")) {
 }
 
 if (-not (Test-Path -LiteralPath ".env")) {
-    throw "Не найден .env. Скопируйте .env.example в .env и добавьте BOT_TOKEN."
+    throw "Не найден .env. Скопируйте .env.example в .env и добавьте BOT_TOKEN и ADMIN_IDS."
 }
 
 & ".venv\Scripts\python.exe" -m emoji_id_bot.main

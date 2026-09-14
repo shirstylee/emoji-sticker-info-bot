@@ -1,18 +1,97 @@
 from __future__ import annotations
 
+from functools import wraps
+
 from . import icons
 from .i18n import language_code, tr
-from .models import UserSettings
+from .models import ResultSettings
 
 
 def _state_icon(value: bool) -> str:
     return icons.tag(icons.CONFIRM, "✅") if value else icons.tag(icons.CANCEL, "❌")
 
 
-LANGUAGE_PROMPT_TEXT = f"""{icons.tag(icons.LANGUAGE, "🅰")} <b>Выберите язык / Choose your language</b>
+def _admin_page(function):
+    @wraps(function)
+    def quoted(*args, **kwargs):
+        heading, body = function(*args, **kwargs).split("\n\n", 1)
+        blocks = "\n\n".join(f"<blockquote>{section}</blockquote>" for section in body.split("\n\n"))
+        return f"{heading}\n\n{blocks}"
+    return quoted
 
-Язык можно изменить позже в настройках.
-You can change the language later in Settings."""
+
+@_admin_page
+def admin_text(language: str | None) -> str:
+    if language_code(language) == "en":
+        return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Admin panel</b>
+
+{icons.tag(icons.SLIDERS, '🎛')} <b>Result settings</b>
+Set a shared format for all new bot results.
+
+{icons.tag(icons.BOT, '🤖')} <b>Administrators</b>
+Grant or revoke access to this panel. Each administrator can manage formatting and other administrators."""
+    return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Админ-панель</b>
+
+{icons.tag(icons.SLIDERS, '🎛')} <b>Настройки результата</b>
+Задайте единый формат для всех новых ответов бота.
+
+{icons.tag(icons.BOT, '🤖')} <b>Администраторы</b>
+Выдавайте и отзывайте доступ к панели. Каждый администратор может менять оформление и управлять другими администраторами."""
+
+
+@_admin_page
+def admins_text(roots: frozenset[int], extra: list[int], language: str | None) -> str:
+    root_lines = "\n".join(f"<code>{value}</code>" for value in sorted(roots))
+    extra_lines = "\n".join(f"<code>{value}</code>" for value in extra if value not in roots) or "—"
+    if language_code(language) == "en":
+        return f"""{icons.tag(icons.BOT, '🤖')} <b>Administrators</b>
+
+{icons.tag(icons.CONFIRM, '✅')} <b>Protected · .env</b>
+{root_lines}
+
+{icons.tag(icons.LIST, '🗂')} <b>Added in this panel</b>
+{extra_lines}
+
+{icons.tag(icons.INFO, 'ℹ️')} Use the buttons below to add or remove access. Protected administrators can only be changed in ADMIN_IDS on the server, followed by a restart."""
+    return f"""{icons.tag(icons.BOT, '🤖')} <b>Администраторы</b>
+
+{icons.tag(icons.CONFIRM, '✅')} <b>Защищённые · .env</b>
+{root_lines}
+
+{icons.tag(icons.LIST, '🗂')} <b>Добавленные через панель</b>
+{extra_lines}
+
+{icons.tag(icons.INFO, 'ℹ️')} Кнопками ниже можно выдать или отозвать доступ. Защищённых администраторов можно изменить только в ADMIN_IDS на сервере с последующим перезапуском."""
+
+
+@_admin_page
+def admin_prompt_text(language: str | None) -> str:
+    if language_code(language) == "en":
+        return f"""{icons.tag(icons.CONFIRM, '✅')} <b>Add administrator</b>
+
+{icons.tag(icons.CODE, '🔨')} Send the numeric Telegram user ID in a separate message. A username or phone number is not suitable.
+
+{icons.tag(icons.INFO, 'ℹ️')} You will confirm access on the next screen. Press Back or send /cancel to cancel. The input session expires in 10 minutes."""
+    return f"""{icons.tag(icons.CONFIRM, '✅')} <b>Добавить администратора</b>
+
+{icons.tag(icons.CODE, '🔨')} Отправьте числовой Telegram ID пользователя отдельным сообщением. Никнейм и номер телефона не подходят.
+
+{icons.tag(icons.INFO, 'ℹ️')} На следующем экране нужно подтвердить выдачу доступа. Для отмены нажмите «Назад» или отправьте /cancel. На ввод ID даётся 10 минут."""
+
+
+@_admin_page
+def admin_confirm_text(telegram_id: int, action: str, language: str | None) -> str:
+    if language_code(language) == "en":
+        title = "Grant administrator access?" if action == "add" else "Revoke administrator access?"
+        detail = ("This ID will be able to change the shared format and manage administrators. Check the ID before confirming."
+                  if action == "add" else "This ID will lose access to the admin panel. The bot will remain available as usual.")
+    else:
+        title = "Выдать права администратора?" if action == "add" else "Отозвать права администратора?"
+        detail = ("Этот ID сможет менять общий формат и управлять администраторами. Проверьте ID перед подтверждением."
+                  if action == "add" else "Этот ID потеряет доступ к админ-панели. Обычные функции бота останутся доступны.")
+    return (f"{icons.tag(icons.WARNING, '❗️')} <b>{title}</b>\n\n"
+            f"{icons.tag(icons.CODE, '🔨')} Telegram ID: <code>{telegram_id}</code>\n\n"
+            f"{icons.tag(icons.INFO, 'ℹ️')} {detail}")
 
 
 def main_text(language: str | None) -> str:
@@ -59,7 +138,7 @@ def help_text(language: str | None) -> str:
 • sticker <code>file_id</code> sends the sticker itself;
 • <code>file_unique_id</code> cannot be used to restore a sticker.
 
-{icons.tag(icons.INFO, "ℹ️")} Large packs are automatically split across multiple messages. Every result line can be customized in Settings."""
+{icons.tag(icons.INFO, "ℹ️")} Large packs are automatically split across multiple messages. Use Export TXT to download the complete result."""
     return f"""{icons.tag(icons.HELP, "❓")} <b>Как пользоваться</b>
 
 1. Отправьте один или несколько эмодзи одним сообщением.
@@ -78,7 +157,7 @@ def help_text(language: str | None) -> str:
 • <code>file_id</code> стикера отправит сам стикер;
 • восстановить стикер по <code>file_unique_id</code> невозможно.
 
-{icons.tag(icons.INFO, "ℹ️")} Если пак большой, результат автоматически придёт несколькими сообщениями. Вид каждой строки меняется в настройках."""
+{icons.tag(icons.INFO, "ℹ️")} Если пак большой, результат автоматически придёт несколькими сообщениями. Кнопка «Экспорт TXT» скачает полный результат."""
 
 
 def examples_text(language: str | None) -> str:
@@ -130,9 +209,7 @@ def about_text(language: str | None) -> str:
 • process emoji and sticker packs from a link;
 • return <code>custom_emoji_id</code>, <code>file_id</code> and <code>file_unique_id</code>;
 • display emoji and stickers from their reusable IDs;
-• customize result formatting in detail.
-
-{icons.tag(icons.SETTINGS, "⚙️")} Choose the emoji view, ID format, numbering and technical details in Settings.
+• copy IDs and export results.
 
 {icons.tag(icons.DOWNLOAD, "⬇️")} Download any complete result as TXT — especially useful for large packs."""
     return f"""{icons.tag(icons.INFO, "ℹ️")} <b>О боте</b>
@@ -144,14 +221,13 @@ def about_text(language: str | None) -> str:
 • обработка emoji- и sticker-паков по ссылке;
 • получение <code>custom_emoji_id</code>, <code>file_id</code> и <code>file_unique_id</code>;
 • показ emoji и стикеров по поддерживаемым ID;
-• подробная настройка оформления результата.
-
-{icons.tag(icons.SETTINGS, "⚙️")} В настройках можно выбрать вид эмодзи, формат ID, нумерацию и состав технических данных.
+• копирование ID и экспорт результатов.
 
 {icons.tag(icons.DOWNLOAD, "⬇️")} После проверки результата его можно целиком скачать в TXT — это особенно удобно для больших паков."""
 
 
-def settings_text(settings: UserSettings) -> str:
+@_admin_page
+def settings_text(settings: ResultSettings) -> str:
     language = language_code(settings.language)
     if language == "en":
         display = {
@@ -177,6 +253,8 @@ def settings_text(settings: UserSettings) -> str:
         }[settings.sticker_id_mode]
         return f"""{icons.tag(icons.SETTINGS, "⚙️")} <b>Result settings</b>
 
+{icons.tag(icons.INFO, "ℹ️")} Changes apply to new results for everyone. Previously sent messages and TXT files remain unchanged.
+
 {icons.tag(icons.PREMIUM, "⭐️")} Emoji view: <b>{display}</b>
 {icons.tag(icons.CODE, "🔨")} ID formatting: <b>{id_style}</b>
 {icons.tag(icons.LIST, "🗂")} List style: <b>{prefix}</b>
@@ -187,7 +265,7 @@ def settings_text(settings: UserSettings) -> str:
 {icons.tag(icons.REFRESH, "🔁")} Remove duplicates: {_state_icon(settings.deduplicate)}
 {icons.tag(icons.BOT, "🤖")} Premium button icons: {_state_icon(settings.button_icons)}
 {icons.tag(icons.MORE, "➕")} Spacing (prefix / dash / variants): {_state_icon(settings.space_after_prefix)} / {_state_icon(settings.spaces_around_dash)} / {_state_icon(settings.space_between_variants)}
-{icons.tag(icons.LANGUAGE, "🅰")} Language: <b>English</b>"""
+""".rstrip()
 
     display = {
         "custom": "Premium/custom emoji",
@@ -212,6 +290,8 @@ def settings_text(settings: UserSettings) -> str:
     }[settings.sticker_id_mode]
     return f"""{icons.tag(icons.SETTINGS, "⚙️")} <b>Настройки результата</b>
 
+{icons.tag(icons.INFO, "ℹ️")} Изменения действуют для всех новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними.
+
 {icons.tag(icons.PREMIUM, "⭐️")} Вид эмодзи: <b>{display}</b>
 {icons.tag(icons.CODE, "🔨")} Оформление ID: <b>{id_style}</b>
 {icons.tag(icons.LIST, "🗂")} Список: <b>{prefix}</b>
@@ -222,10 +302,11 @@ def settings_text(settings: UserSettings) -> str:
 {icons.tag(icons.REFRESH, "🔁")} Убирать повторы: {_state_icon(settings.deduplicate)}
 {icons.tag(icons.BOT, "🤖")} Premium-иконки кнопок: {_state_icon(settings.button_icons)}
 {icons.tag(icons.MORE, "➕")} Пробелы (маркер / тире / варианты): {_state_icon(settings.space_after_prefix)} / {_state_icon(settings.spaces_around_dash)} / {_state_icon(settings.space_between_variants)}
-{icons.tag(icons.LANGUAGE, "🅰")} Язык: <b>Русский</b>"""
+""".rstrip()
 
 
-def appearance_text(settings: UserSettings) -> str:
+@_admin_page
+def appearance_text(settings: ResultSettings) -> str:
     language = language_code(settings.language)
     variants_gap = " " if settings.space_between_variants else ""
     visual = {
@@ -239,7 +320,7 @@ def appearance_text(settings: UserSettings) -> str:
         "plain": "6028346797368283073",
     }[settings.id_style]
     prefix = {"number": "1)", "bullet": "•", "none": ""}[settings.prefix_style]
-    dash = " — " if settings.spaces_around_dash else "—"
+    dash = " - " if settings.spaces_around_dash else "-"
     separator = {"space": " ", "dash": dash, "newline": "\n"}[settings.separator]
     prefix_gap = " " if prefix and settings.space_after_prefix else ""
     if language == "en":
@@ -257,6 +338,7 @@ def appearance_text(settings: UserSettings) -> str:
     )
 
 
+@_admin_page
 def sticker_settings_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.STICKER, "🙂")} <b>Sticker IDs and details</b>
@@ -289,6 +371,7 @@ Shows <code>file_id</code> for working with the file and <code>file_unique_id</c
 {icons.tag(icons.PREMIUM, "⭐️")} Для custom emoji первым всегда показывается <code>custom_emoji_id</code> — настройка выше его не заменяет."""
 
 
+@_admin_page
 def pack_settings_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.LINK, "🔗")} <b>Packs and interface</b>
@@ -299,28 +382,15 @@ def pack_settings_text(language: str | None) -> str:
 {icons.tag(icons.LIST, "🗂")} Здесь настраиваются заголовки больших результатов, удаление повторяющихся ID и Premium-иконки inline-кнопок."""
 
 
+@_admin_page
 def reset_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.WARNING, "❗️")} <b>Reset settings?</b>
 
-{icons.tag(icons.REFRESH, "🔁")} All result options will return to their defaults. Your selected language will remain unchanged."""
+{icons.tag(icons.REFRESH, "🔁")} Restore the default format for everyone: standard emoji - ID, without numbering or brackets. Administrator access remains unchanged."""
     return f"""{icons.tag(icons.WARNING, "❗️")} <b>Сбросить настройки?</b>
 
-{icons.tag(icons.REFRESH, "🔁")} Все параметры результата вернутся к значениям по умолчанию. Выбранный язык останется без изменений."""
-
-
-def language_settings_text(language: str | None) -> str:
-    if language_code(language) == "en":
-        return f"""{icons.tag(icons.LANGUAGE, "🅰")} <b>Language</b>
-
-Choose the language used for menus, results and bot messages.
-
-Current language: <b>English</b>"""
-    return f"""{icons.tag(icons.LANGUAGE, "🅰")} <b>Язык</b>
-
-Выберите язык меню, результатов и сообщений бота.
-
-Текущий язык: <b>Русский</b>"""
+{icons.tag(icons.REFRESH, "🔁")} Для всех будет восстановлен формат: обычный emoji - ID, без нумерации и скобок. Права администраторов останутся прежними."""
 
 
 # Russian aliases retained for tests and external imports.
