@@ -24,6 +24,7 @@ class ResultSettings:
     button_icons: bool = True
     language: str | None = None
     is_admin: bool = False
+    settings_scope: str = "global"
     space_after_prefix: bool = True
     spaces_around_dash: bool = True
     space_between_variants: bool = True

@@ -28,6 +28,18 @@ def _button(
     return InlineKeyboardButton(**data)
 
 
+def scope_settings_keyboard(keyboard: InlineKeyboardMarkup, scope: str) -> InlineKeyboardMarkup:
+    if scope not in {"global", "personal"}:
+        raise ValueError("Unknown settings scope")
+    # The scope travels with each message, not a shared/expiring navigation session.
+    for row in keyboard.inline_keyboard:
+        for button in row:
+            data = button.callback_data or ""
+            if data == "menu:settings" or data.startswith(("settings:", "set:", "toggle:")):
+                button.callback_data = f"{scope}|{data}"
+    return keyboard
+
+
 def main_keyboard(use_icons: bool, language: str | None = None, *, is_admin: bool = False) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[

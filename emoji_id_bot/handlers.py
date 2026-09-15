@@ -46,6 +46,7 @@ from .keyboards import (
     reset_keyboard,
     result_keyboard,
     settings_keyboard,
+    scope_settings_keyboard,
     status_keyboard,
     sticker_settings_keyboard,
 )
@@ -115,10 +116,11 @@ async def _is_admin(db: Database, user_id: int, admin_ids: frozenset[int]) -> bo
 
 
 async def _get_settings(db: Database, user: User, admin_ids: frozenset[int]) -> ResultSettings:
+    is_admin = await _is_admin(db, user.id, admin_ids)
     return replace(
-        await db.get_settings(),
+        await db.get_settings(admin_id=user.id if is_admin else None),
         language=language_code(getattr(user, "language_code", None)),
-        is_admin=await _is_admin(db, user.id, admin_ids),
+        is_admin=is_admin,
     )
 
 
@@ -135,6 +137,8 @@ async def _answer_menu(
     settings: ResultSettings,
     db: Database,
 ) -> None:
+    original_builder = builder
+    builder = lambda use_icons: scope_settings_keyboard(original_builder(use_icons), settings.settings_scope)
     try:
         await message.answer(text, reply_markup=builder(settings.button_icons or settings.is_admin))
     except TelegramBadRequest:
@@ -157,6 +161,8 @@ async def _edit_menu(
     settings: ResultSettings,
     db: Database,
 ) -> None:
+    original_builder = builder
+    builder = lambda use_icons: scope_settings_keyboard(original_builder(use_icons), settings.settings_scope)
     message = callback.message
     if not isinstance(message, Message):
         return
@@ -336,6 +342,14 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
         return
     user_id = callback.from_user.id
     data = callback.data
+    scope: str | None = None
+    if "|" in data:
+        scope, data = data.split("|", 1)
+        if scope not in {"global", "personal"} or not (
+            data == "menu:settings" or data.startswith(("settings:", "set:", "toggle:"))
+        ):
+            await callback.answer()
+            return
     if (not isinstance(callback.message, Message)
             or callback.message.chat.type != ChatType.PRIVATE
             or callback.message.chat.id != user_id):
@@ -347,14 +361,22 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
         await callback.answer()
         return
     settings = await _get_settings(db, callback.from_user, admin_ids)
-    context = await state.get_data()
-    settings_from_admin = data == "admin:settings" or (
-        context.get("settings_origin") == "admin"
-        and (data == "menu:settings" or data.startswith(("settings:", "set:", "toggle:")))
-    )
+    editing = data in {"admin:settings", "menu:settings"} or data.startswith(("settings:", "set:", "toggle:"))
+    if editing and scope is None:
+        if data == "admin:settings":
+            scope = "global"
+        elif data == "menu:settings":
+            scope = "personal"
+        else:
+            # Old unscoped controls are ambiguous; never write to the wrong profile.
+            await callback.answer(tr(settings.language, "stale_button"), show_alert=True)
+            return
+    settings_from_admin = editing and scope == "global"
+    target_admin_id = user_id if scope == "personal" else None
+    if editing:
+        settings = replace(await db.get_settings(admin_id=target_admin_id),
+                           language=settings.language, is_admin=True)
     await state.clear()
-    if settings_from_admin:
-        await state.set_data({"settings_origin": "admin"})
 
     if data.startswith("export:"):
         item = exports.get(data.split(":", 1)[1], user_id)
@@ -387,7 +409,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             await _edit_menu(callback, admin_export_text(language),
                              lambda use_icons: back_keyboard(use_icons, "admin", language), settings, db)
             await callback.message.answer_document(
-                BufferedInputFile(settings_json(settings), filename="result-settings.json"),
+                BufferedInputFile(settings_json(await db.get_settings()), filename="result-settings.json"),
             )
         elif data == "admin:status":
             extra = await db.list_admins()
@@ -492,7 +514,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
         elif data == "settings:stickers":
             await _edit_menu(
                 callback,
-                sticker_settings_text(language),
+                sticker_settings_text(language, scope=settings.settings_scope),
                 lambda icons: sticker_settings_keyboard(settings, icons),
                 settings,
                 db,
@@ -500,7 +522,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
         elif data == "settings:packs":
             await _edit_menu(
                 callback,
-                pack_settings_text(language),
+                pack_settings_text(language, scope=settings.settings_scope),
                 lambda icons: pack_settings_keyboard(settings, icons),
                 settings,
                 db,
@@ -508,13 +530,13 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
         elif data == "settings:reset":
             await _edit_menu(
                 callback,
-                reset_text(language),
+                reset_text(language, scope=settings.settings_scope),
                 lambda use_icons: reset_keyboard(use_icons, language),
                 settings,
                 db,
             )
         elif data == "settings:reset_confirm":
-            settings = replace(await db.reset(), language=language, is_admin=True)
+            settings = replace(await db.reset(admin_id=target_admin_id), language=language, is_admin=True)
             notice = tr(language, "settings_reset")
             await _edit_menu(
                 callback,
@@ -538,7 +560,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             if key not in allowed or value not in allowed[key]:
                 await callback.answer(tr(language, "unknown_setting"), show_alert=True)
                 return
-            settings = replace(await db.set_value(key, value), language=language, is_admin=True)
+            settings = replace(await db.set_value(key, value, admin_id=target_admin_id), language=language, is_admin=True)
             if key in {"display_mode", "id_style", "prefix_style", "separator"}:
                 await _edit_menu(
                     callback,
@@ -550,7 +572,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             else:
                 await _edit_menu(
                     callback,
-                    sticker_settings_text(language),
+                    sticker_settings_text(language, scope=settings.settings_scope),
                     lambda icons: sticker_settings_keyboard(settings, icons),
                     settings,
                     db,
@@ -569,7 +591,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             }:
                 await callback.answer(tr(language, "unknown_setting"), show_alert=True)
                 return
-            settings = replace(await db.toggle(key), language=language, is_admin=True)
+            settings = replace(await db.toggle(key, admin_id=target_admin_id), language=language, is_admin=True)
             if key in {
                 "space_after_prefix",
                 "spaces_around_dash",
@@ -585,7 +607,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             elif key == "show_details":
                 await _edit_menu(
                     callback,
-                    sticker_settings_text(language),
+                    sticker_settings_text(language, scope=settings.settings_scope),
                     lambda icons: sticker_settings_keyboard(settings, icons),
                     settings,
                     db,
@@ -593,7 +615,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             else:
                 await _edit_menu(
                     callback,
-                    pack_settings_text(language),
+                    pack_settings_text(language, scope=settings.settings_scope),
                     lambda icons: pack_settings_keyboard(settings, icons),
                     settings,
                     db,

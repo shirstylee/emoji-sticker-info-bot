@@ -41,6 +41,11 @@ async def main() -> None:
 
     database = Database(config.db_path)
     await database.connect()
+    try:
+        await database.prune_admin_settings(config.admin_ids)
+    except BaseException:
+        await database.close()
+        raise
     bot = Bot(
         token=config.bot_token,
         default=DefaultBotProperties(

@@ -12,6 +12,18 @@ def _state_icon(value: bool) -> str:
     return icons.tag(icons.CONFIRM, "✅") if value else icons.tag(icons.CANCEL, "❌")
 
 
+def settings_scope_text(language: str | None, scope: str) -> str:
+    if language_code(language) == "en":
+        text = ("Personal settings — only your results. Other administrators and regular users are not affected."
+                if scope == "personal" else
+                "User settings — results for regular users only. Administrators use their own personal settings.")
+    else:
+        text = ("Личные настройки — только ваши результаты. Других администраторов и обычных пользователей не затрагивают."
+                if scope == "personal" else
+                "Настройки пользователей — только для обычных пользователей. Администраторы используют свои личные настройки.")
+    return f"{icons.tag(icons.INFO, 'ℹ️')} <b>{text}</b>"
+
+
 def _quoted_page(function):
     @wraps(function)
     def quoted(*args, **kwargs):
@@ -27,26 +39,26 @@ def admin_text(language: str | None) -> str:
         return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Admin panel</b>
 
 {icons.tag(icons.SLIDERS, '🎛')} <b>Result settings</b>
-Set a shared format for all new bot results.
+Set the result format for regular users only. Your own format is configured in Settings in the main menu.
 
 {icons.tag(icons.BOT, '🤖')} <b>Administrators</b>
 Grant or revoke access to this panel. Each administrator can manage formatting and other administrators.
 
 {icons.tag(icons.DOWNLOAD, '⬇️')} <b>Export settings</b>
-Download a JSON snapshot of the current shared result format.
+Download a JSON snapshot of the result format for regular users, excluding personal administrator settings.
 
 {icons.tag(icons.INFO, 'ℹ️')} <b>Bot status</b>
 Check uptime, active text jobs, processing limits, cached TXT exports and runtime versions."""
     return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Админ-панель</b>
 
 {icons.tag(icons.SLIDERS, '🎛')} <b>Настройки результата</b>
-Задайте единый формат для всех новых ответов бота.
+Задайте формат ответов обычным пользователям. Свой формат меняйте в настройках главного меню.
 
 {icons.tag(icons.BOT, '🤖')} <b>Администраторы</b>
 Выдавайте и отзывайте доступ к панели. Каждый администратор может менять оформление и управлять другими администраторами.
 
 {icons.tag(icons.DOWNLOAD, '⬇️')} <b>Экспорт настроек</b>
-Скачайте текущие общие настройки оформления в JSON.
+Скачайте в JSON формат для обычных пользователей, без личных настроек администраторов.
 
 {icons.tag(icons.INFO, 'ℹ️')} <b>Состояние бота</b>
 Проверьте время работы, активные текстовые запросы, лимиты обработки, TXT-экспорты в кэше и версии среды."""
@@ -57,12 +69,12 @@ def admin_export_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.DOWNLOAD, '⬇️')} <b>Export settings</b>
 
-{icons.tag(icons.FILE, '📁')} <code>result-settings.json</code> contains the shared result format: emoji view, ID formatting, spacing, pack options and button icons.
+{icons.tag(icons.FILE, '📁')} <code>result-settings.json</code> contains the format for regular users: emoji view, ID formatting, spacing, pack options and button icons. Personal administrator settings are not included.
 
 {icons.tag(icons.INFO, 'ℹ️')} Save it to compare settings or reapply them manually later. This is not a full database backup; automatic import is not available. Exporting does not change the bot settings."""
     return f"""{icons.tag(icons.DOWNLOAD, '⬇️')} <b>Экспорт настроек</b>
 
-{icons.tag(icons.FILE, '📁')} В файле <code>result-settings.json</code> — общие параметры результата: вид эмодзи, оформление ID, пробелы, параметры паков и иконок кнопок.
+{icons.tag(icons.FILE, '📁')} В файле <code>result-settings.json</code> — параметры результата для обычных пользователей: вид эмодзи, оформление ID, пробелы, параметры паков и иконок кнопок. Личные настройки администраторов в файл не входят.
 
 {icons.tag(icons.INFO, 'ℹ️')} Сохраните файл для сравнения настроек или их ручного восстановления. Это не полная копия базы; автоматический импорт пока не предусмотрен. Экспорт не меняет настройки бота."""
 
@@ -308,6 +320,7 @@ def about_text(language: str | None) -> str:
 @_quoted_page
 def settings_text(settings: ResultSettings) -> str:
     language = language_code(settings.language)
+    scope_note = settings_scope_text(language, settings.settings_scope)
     if language == "en":
         display = {
             "custom": "Premium/custom emoji",
@@ -332,7 +345,8 @@ def settings_text(settings: ResultSettings) -> str:
         }[settings.sticker_id_mode]
         return f"""{icons.tag(icons.SETTINGS, "⚙️")} <b>Result settings</b>
 
-{icons.tag(icons.INFO, "ℹ️")} Changes apply to new results for everyone. Previously sent messages and TXT files remain unchanged.
+{scope_note}
+Changes apply to new results. Previously sent messages and TXT files remain unchanged.
 
 {icons.tag(icons.PREMIUM, "⭐️")} Emoji view: <b>{display}</b>
 {icons.tag(icons.CODE, "🔨")} ID formatting: <b>{id_style}</b>
@@ -369,7 +383,8 @@ def settings_text(settings: ResultSettings) -> str:
     }[settings.sticker_id_mode]
     return f"""{icons.tag(icons.SETTINGS, "⚙️")} <b>Настройки результата</b>
 
-{icons.tag(icons.INFO, "ℹ️")} Изменения действуют для всех новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними.
+{scope_note}
+Изменения действуют для новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними.
 
 {icons.tag(icons.PREMIUM, "⭐️")} Вид эмодзи: <b>{display}</b>
 {icons.tag(icons.CODE, "🔨")} Оформление ID: <b>{id_style}</b>
@@ -387,6 +402,7 @@ def settings_text(settings: ResultSettings) -> str:
 @_quoted_page
 def appearance_text(settings: ResultSettings) -> str:
     language = language_code(settings.language)
+    scope_note = settings_scope_text(language, settings.settings_scope)
     variants_gap = " " if settings.space_between_variants else ""
     visual = {
         "custom": icons.tag(icons.TELEGRAM, "✈️"),
@@ -405,12 +421,14 @@ def appearance_text(settings: ResultSettings) -> str:
     if language == "en":
         return (
             f"{icons.tag(icons.SLIDERS, '🎛')} <b>Result appearance</b>\n\n"
+            f"{scope_note}\n\n"
             f"{icons.tag(icons.SETTINGS, '⚙️')} Choose the emoji view, ID formatting, line prefix and separator.\n\n"
             f"{icons.tag(icons.ARTICLE, '📝')} <b>Preview:</b>\n"
             f"{prefix}{prefix_gap}{visual}{separator}{identifier}"
         )
     return (
         f"{icons.tag(icons.SLIDERS, '🎛')} <b>Вид результата</b>\n\n"
+        f"{scope_note}\n\n"
         f"{icons.tag(icons.SETTINGS, '⚙️')} Настройте отображение эмодзи, ID, префикс строки и разделитель.\n\n"
         f"{icons.tag(icons.ARTICLE, '📝')} <b>Пример:</b>\n"
         f"{prefix}{prefix_gap}{visual}{separator}{identifier}"
@@ -418,9 +436,11 @@ def appearance_text(settings: ResultSettings) -> str:
 
 
 @_quoted_page
-def sticker_settings_text(language: str | None) -> str:
+def sticker_settings_text(language: str | None, *, scope: str = "global") -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.STICKER, "🙂")} <b>Sticker IDs and details</b>
+
+{settings_scope_text(language, scope)}
 
 Choose which identifier to show for standard and Premium stickers:
 
@@ -435,6 +455,8 @@ Shows <code>file_id</code> for working with the file and <code>file_unique_id</c
 
 {icons.tag(icons.PREMIUM, "⭐️")} A custom emoji always shows <code>custom_emoji_id</code> first — this setting does not replace it."""
     return f"""{icons.tag(icons.STICKER, "🙂")} <b>ID и данные стикеров</b>
+
+{settings_scope_text(language, scope)}
 
 Выберите, какой идентификатор выводить для обычных и Premium-стикеров:
 
@@ -451,25 +473,33 @@ Shows <code>file_id</code> for working with the file and <code>file_unique_id</c
 
 
 @_quoted_page
-def pack_settings_text(language: str | None) -> str:
+def pack_settings_text(language: str | None, *, scope: str = "global") -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.LINK, "🔗")} <b>Packs and interface</b>
 
+{settings_scope_text(language, scope)}
+
 {icons.tag(icons.LIST, "🗂")} Configure large-result headings, duplicate removal and Premium icons on inline buttons."""
     return f"""{icons.tag(icons.LINK, "🔗")} <b>Паки и интерфейс</b>
+
+{settings_scope_text(language, scope)}
 
 {icons.tag(icons.LIST, "🗂")} Здесь настраиваются заголовки больших результатов, удаление повторяющихся ID и Premium-иконки inline-кнопок."""
 
 
 @_quoted_page
-def reset_text(language: str | None) -> str:
+def reset_text(language: str | None, *, scope: str = "global") -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.WARNING, "❗️")} <b>Reset settings?</b>
 
-{icons.tag(icons.REFRESH, "🔁")} Restore the default format for everyone: standard emoji - ID, without numbering or brackets. Administrator access remains unchanged."""
+{settings_scope_text(language, scope)}
+
+{icons.tag(icons.REFRESH, "🔁")} Restore the default format in this section: standard emoji - ID, without numbering or brackets. Other profiles and administrator access remain unchanged."""
     return f"""{icons.tag(icons.WARNING, "❗️")} <b>Сбросить настройки?</b>
 
-{icons.tag(icons.REFRESH, "🔁")} Для всех будет восстановлен формат: обычный emoji - ID, без нумерации и скобок. Права администраторов останутся прежними."""
+{settings_scope_text(language, scope)}
+
+{icons.tag(icons.REFRESH, "🔁")} В этом разделе будет восстановлен формат: обычный emoji - ID, без нумерации и скобок. Другие профили настроек и права администраторов останутся прежними."""
 
 
 # Russian aliases retained for tests and external imports.

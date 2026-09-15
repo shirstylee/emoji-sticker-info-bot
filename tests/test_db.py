@@ -40,7 +40,7 @@ async def test_legacy_database_migration(tmp_path: Path) -> None:
     try:
         assert await database.get_settings() == ResultSettings()
         cursor = await database.connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        assert {row[0] for row in await cursor.fetchall()} == {"bot_settings", "administrators"}
+        assert {row[0] for row in await cursor.fetchall()} == {"bot_settings", "administrators", "admin_result_settings"}
         assert await database.list_admins() == []
         cursor = await database.connection.execute("SELECT settings FROM bot_settings")
         values = json.loads((await cursor.fetchone())[0])
@@ -100,3 +100,30 @@ async def test_administrator_storage_is_bounded_and_persistent(tmp_path: Path) -
         assert len(await database.list_admins()) == MAX_ADMINS - 1
     finally:
         await database.close()
+
+
+@pytest.mark.asyncio
+async def test_personal_profiles_persist_independently_and_are_cleaned_on_revocation(tmp_path):
+    db = Database(tmp_path / "settings.db")
+    await db.connect()
+    try:
+        await db.add_admin(200)
+        await db.set_value("id_style", "code")
+        await db.set_value("id_style", "brackets", admin_id=100)
+        await db.set_value("separator", "newline", admin_id=200)
+        await db.set_value("prefix_style", "number", admin_id=300)
+        await db.close()
+        await db.connect()
+        await db.prune_admin_settings(frozenset({100}))
+        assert (await db.get_settings()).id_style == "code"
+        assert (await db.get_settings(admin_id=100)).id_style == "brackets"
+        assert (await db.get_settings(admin_id=200)).separator == "newline"
+        assert (await db.get_settings(admin_id=300)).prefix_style == "none"
+        await db.remove_admin(200)
+        assert (await db.get_settings(admin_id=200)).separator == "dash"
+        await db.prune_admin_settings(frozenset())
+        cursor = await db.connection.execute("SELECT COUNT(*) FROM admin_result_settings")
+        assert (await cursor.fetchone())[0] == 0
+        assert (await db.get_settings()).id_style == "code"
+    finally:
+        await db.close()

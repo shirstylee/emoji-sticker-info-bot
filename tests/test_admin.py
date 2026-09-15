@@ -65,6 +65,8 @@ def responses(monkeypatch):
     "toggle:show_details", "lang:en:start", "admin:main", "admin:list", "admin:add",
     "admin:confirm_add:300", "admin:remove:100", "admin:confirm_remove:100",
     "admin:preview", "admin:status", "admin:export_settings", "admin:settings",
+    "global|set:display_mode:both", "personal|set:display_mode:both",
+    "global|settings:reset_confirm", "personal|settings:reset_confirm",
 ])
 async def test_regular_user_cannot_use_old_or_forged_admin_buttons(database, state, responses, data):
     await callbacks(callback(data, 200), database, ExportStore(), state, ROOTS)
@@ -107,6 +109,7 @@ async def test_back_button_returns_to_admin_panel(database, state, responses):
 @pytest.mark.asyncio
 async def test_settings_export_and_status_are_read_only(database, state, responses):
     await database.set_value("id_style", "code")
+    await database.set_value("id_style", "brackets", admin_id=100)
     before = await database.get_settings()
     exports = ExportStore()
     token = exports.put(200, "test.txt", "test content")
@@ -116,7 +119,7 @@ async def test_settings_export_and_status_are_read_only(database, state, respons
     assert document.filename == "result-settings.json"
     payload = json.loads(document.data)
     assert payload["settings"]["id_style"] == "code"
-    assert not {"user_id", "language", "is_admin", "admin_ids", "bot_token"} & payload["settings"].keys()
+    assert not {"user_id", "language", "is_admin", "settings_scope", "admin_ids", "bot_token"} & payload["settings"].keys()
     protection = RequestProtection(max_concurrent_jobs=3, pack_cooldown_seconds=12)
     async with protection.job(200):
         await callbacks(callback("admin:status"), database, exports, state, ROOTS, protection)
@@ -134,7 +137,7 @@ async def test_settings_export_and_status_are_read_only(database, state, respons
 @pytest.mark.asyncio
 async def test_settings_back_destination_preserves_entry_point(database, state, responses):
     exports = ExportStore()
-    for data in ("admin:settings", "settings:appearance", "set:id_style:code", "menu:settings", "settings:reset_confirm"):
+    for data in ("admin:settings", "global|settings:appearance", "global|set:id_style:code", "global|menu:settings", "global|settings:reset_confirm"):
         await callbacks(callback(data), database, exports, state, ROOTS)
     keyboard = responses[1].await_args.kwargs["reply_markup"]
     assert keyboard.inline_keyboard[-1][0].callback_data == "admin:main"
@@ -174,12 +177,95 @@ async def test_regular_start_is_immediate_and_locale_is_contextual(database, sta
 
 @pytest.mark.asyncio
 async def test_admin_changes_are_shared_and_keep_locale(database, state, responses):
-    await callbacks(callback("set:display_mode:both", language="en"), database, ExportStore(), state, ROOTS)
+    await callbacks(callback("global|set:display_mode:both", language="en"), database, ExportStore(), state, ROOTS)
     assert "Result appearance" in responses[1].await_args.args[0]
     settings = await _get_settings(database, message(200).from_user, ROOTS)
     assert settings.display_mode == "both"
     assert settings.is_admin is False
     assert settings.language == "ru"
+
+
+@pytest.mark.asyncio
+async def test_global_format_excludes_all_admins_even_without_personal_settings(database, state, responses):
+    await database.add_admin(101)
+    await callbacks(callback("global|set:id_style:code"), database, ExportStore(), state, ROOTS)
+    for admin_id in (100, 101):
+        settings = await _get_settings(database, message(admin_id).from_user, ROOTS)
+        assert settings.id_style == "plain"
+        assert settings.settings_scope == "personal"
+    for user_id in (200, 201):
+        settings = await _get_settings(database, message(user_id).from_user, ROOTS)
+        assert settings.id_style == "code"
+        assert settings.settings_scope == "global"
+
+
+@pytest.mark.asyncio
+async def test_personal_format_is_for_the_current_admin_only(database, state, responses):
+    await database.add_admin(101)
+    await callbacks(callback("personal|set:prefix_style:number"), database, ExportStore(), state, ROOTS)
+    assert (await database.get_settings(admin_id=100)).prefix_style == "number"
+    assert (await database.get_settings(admin_id=101)).prefix_style == "none"
+    assert (await database.get_settings()).prefix_style == "none"
+    assert "Личные настройки" in responses[1].await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_scoped_buttons_remain_correct_when_menus_are_interleaved(database, state, responses):
+    exports = ExportStore()
+    await callbacks(callback("admin:settings"), database, exports, state, ROOTS)
+    global_button = responses[1].await_args.kwargs["reply_markup"].inline_keyboard[0][0].callback_data
+    assert global_button == "global|settings:appearance"
+    await callbacks(callback("menu:settings"), database, exports, state, ROOTS)
+    personal_button = responses[1].await_args.kwargs["reply_markup"].inline_keyboard[0][0].callback_data
+    assert personal_button == "personal|settings:appearance"
+    await state.clear()  # Also simulates expired navigation or a restart.
+    await callbacks(callback(global_button), database, exports, state, ROOTS)
+    assert "Настройки пользователей" in responses[1].await_args.args[0]
+    await callbacks(callback("global|set:id_style:code"), database, exports, state, ROOTS)
+    await callbacks(callback(personal_button), database, exports, state, ROOTS)
+    await callbacks(callback("personal|set:id_style:brackets"), database, exports, state, ROOTS)
+    assert (await database.get_settings()).id_style == "code"
+    assert (await database.get_settings(admin_id=100)).id_style == "brackets"
+
+
+@pytest.mark.asyncio
+async def test_toggle_and_reset_affect_only_the_chosen_profile(database, state, responses):
+    exports = ExportStore()
+    await database.set_value("id_style", "code", admin_id=101)
+    for scope in ("global", "personal"):
+        await callbacks(callback(f"{scope}|toggle:show_details"), database, exports, state, ROOTS)
+    await callbacks(callback("personal|settings:reset_confirm"), database, exports, state, ROOTS)
+    assert (await database.get_settings(admin_id=100)).show_details is False
+    assert (await database.get_settings()).show_details is True
+    await callbacks(callback("personal|set:id_style:brackets"), database, exports, state, ROOTS)
+    await callbacks(callback("global|settings:reset_confirm"), database, exports, state, ROOTS)
+    assert (await database.get_settings()).show_details is False
+    assert (await database.get_settings(admin_id=100)).id_style == "brackets"
+    assert (await database.get_settings(admin_id=101)).id_style == "code"
+
+
+@pytest.mark.asyncio
+async def test_actual_answers_use_global_or_personal_format(database, responses):
+    await database.set_value("id_style", "code")
+    await database.set_value("prefix_style", "number", admin_id=100)
+    exports = ExportStore()
+    for user_id, expected in ((100, "1) 🏐 - U+1F3D0"), (200, "🏐 - <code>U+1F3D0</code>")):
+        await handle_text(message(user_id, "🏐"), AsyncMock(), database, exports, RequestProtection(), ROOTS)
+        assert responses[0].await_args.args[0] == expected
+    sticker = Sticker(file_id="file_test", file_unique_id="unique_test", type="regular",
+                      width=512, height=512, is_animated=False, is_video=False, emoji="🏐")
+    for user_id, expected in ((100, "1) 🏐 - file_test"), (200, "🏐 - <code>file_test</code>")):
+        await handle_sticker(message(user_id, text=None, sticker=sticker), database, exports, ROOTS)
+        assert responses[0].await_args.args[0] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("data", ["set:id_style:code", "toggle:show_details", "settings:reset_confirm"])
+async def test_ambiguous_legacy_controls_never_mutate_either_profile(database, state, responses, data):
+    await callbacks(callback(data), database, ExportStore(), state, ROOTS)
+    assert (await database.get_settings()).id_style == "plain"
+    assert (await database.get_settings(admin_id=100)).id_style == "plain"
+    assert responses[2].await_args.kwargs["show_alert"] is True
 
 
 @pytest.mark.asyncio
@@ -220,7 +306,7 @@ async def test_env_admin_cannot_be_removed_and_reset_keeps_admins(database, stat
     await callbacks(callback("admin:confirm_remove:100", 200), database, ExportStore(), state, ROOTS)
     assert ".env" in responses[2].await_args.args[0]
     assert (await _get_settings(database, message().from_user, ROOTS)).is_admin
-    await callbacks(callback("settings:reset_confirm", 200), database, ExportStore(), state, ROOTS)
+    await callbacks(callback("global|settings:reset_confirm", 200), database, ExportStore(), state, ROOTS)
     assert await database.is_admin(200)
 
 

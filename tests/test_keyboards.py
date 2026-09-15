@@ -6,6 +6,7 @@ from emoji_id_bot.keyboards import (
     main_keyboard,
     result_keyboard,
     settings_keyboard,
+    scope_settings_keyboard,
     status_keyboard,
     back_keyboard,
 )
@@ -112,3 +113,14 @@ def test_protected_admins_have_no_remove_button() -> None:
     callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
     assert "admin:remove:1" not in callbacks
     assert "admin:remove:2" in callbacks
+
+
+def test_scoped_buttons_fit_telegram_limits_and_remain_scoped():
+    for scope in ("global", "personal"):
+        keyboard = scope_settings_keyboard(appearance_keyboard(ResultSettings(), True), scope)
+        for row in keyboard.inline_keyboard:
+            for button in row:
+                assert button.callback_data.startswith(scope + "|")
+                assert len(button.callback_data.encode("utf-8")) <= 64
+        again = scope_settings_keyboard(keyboard, scope)
+        assert all(button.callback_data.count("|") == 1 for row in again.inline_keyboard for button in row)

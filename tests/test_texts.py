@@ -3,6 +3,7 @@ import html
 import re
 
 from emoji_id_bot.texts import about_text, examples_text, admin_export_text, admin_status_text
+from emoji_id_bot.texts import reset_text, sticker_settings_text, pack_settings_text
 from emoji_id_bot.texts import (
     ABOUT_TEXT,
     EXAMPLES_TEXT,
@@ -151,3 +152,15 @@ def test_boolean_settings_use_checkmarks_and_crosses() -> None:
     assert "❌" in text
     assert ">да</b>" not in text
     assert ">нет</b>" not in text
+
+
+def test_every_settings_page_identifies_its_scope():
+    for scope, marker in (("personal", "Личные настройки"), ("global", "Настройки пользователей")):
+        settings = ResultSettings(settings_scope=scope)
+        pages = [settings_text(settings), appearance_text(settings),
+                 sticker_settings_text("ru", scope=scope), pack_settings_text("ru", scope=scope),
+                 reset_text("ru", scope=scope)]
+        for page in pages:
+            assert marker in page
+            assert "<blockquote>" in page
+            assert len(page) < 4096
