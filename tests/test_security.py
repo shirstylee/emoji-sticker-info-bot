@@ -62,9 +62,11 @@ def test_sliding_window_limiter_allows_requests_again_after_window() -> None:
 @pytest.mark.asyncio
 async def test_request_protection_rejects_duplicate_and_excess_jobs() -> None:
     protection = RequestProtection(max_concurrent_jobs=1)
+    assert protection.active_job_count == 0
 
     async with protection.job(1) as first:
         assert first.allowed is True
+        assert protection.active_job_count == 1
         async with protection.job(1) as duplicate:
             assert duplicate.reason == "user_busy"
         async with protection.job(2) as excess:
@@ -72,6 +74,7 @@ async def test_request_protection_rejects_duplicate_and_excess_jobs() -> None:
 
     async with protection.job(2) as after_release:
         assert after_release.allowed is True
+    assert protection.active_job_count == 0
 
 
 @pytest.mark.asyncio

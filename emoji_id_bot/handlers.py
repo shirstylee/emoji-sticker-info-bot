@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import time
+import platform
 from dataclasses import replace
 from typing import Callable
 
 from aiogram import Bot, F, Router
+from aiogram import __version__ as aiogram_version
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
@@ -23,7 +25,7 @@ from .extractors import (
     extract_telegram_ids,
     extract_unicode_id_items,
 )
-from .exports import ExportStore, html_lines_to_text, safe_export_filename
+from .exports import ExportStore, html_lines_to_text, safe_export_filename, settings_json
 from .formatters import (
     chunk_line_variants,
     format_emoji_lines,
@@ -44,6 +46,7 @@ from .keyboards import (
     reset_keyboard,
     result_keyboard,
     settings_keyboard,
+    status_keyboard,
     sticker_settings_keyboard,
 )
 from .models import (
@@ -62,7 +65,7 @@ from .texts import (
     admins_text,
     admin_prompt_text,
     admin_confirm_text,
-    admin_preview_text,
+    admin_export_text,
     admin_status_text,
     about_text,
     appearance_text,
@@ -327,7 +330,8 @@ async def command_settings(message: Message, db: Database, state: FSMContext,
 
 @router.callback_query()
 async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
-                    state: FSMContext, admin_ids: frozenset[int] = frozenset()) -> None:
+                    state: FSMContext, admin_ids: frozenset[int] = frozenset(),
+                    protection: RequestProtection | None = None) -> None:
     if callback.from_user is None or not callback.data:
         return
     user_id = callback.from_user.id
@@ -342,12 +346,15 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
         await state.clear()
         await callback.answer()
         return
-    if data == "admin:main":
-        # Old keyboards cannot open the panel; /admin is the only entry point.
-        await callback.answer()
-        return
     settings = await _get_settings(db, callback.from_user, admin_ids)
+    context = await state.get_data()
+    settings_from_admin = data == "admin:settings" or (
+        context.get("settings_origin") == "admin"
+        and (data == "menu:settings" or data.startswith(("settings:", "set:", "toggle:")))
+    )
     await state.clear()
+    if settings_from_admin:
+        await state.set_data({"settings_origin": "admin"})
 
     if data.startswith("export:"):
         item = exports.get(data.split(":", 1)[1], user_id)
@@ -373,16 +380,27 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
     notice: str | None = None
 
     try:
-        if data == "admin:preview":
-            await _edit_menu(callback, admin_preview_text(settings),
-                             lambda use_icons: back_keyboard(use_icons, "settings", language), settings, db)
+        if data == "admin:main":
+            await _edit_menu(callback, admin_text(language),
+                             lambda use_icons: admin_keyboard(use_icons, language), settings, db)
+        elif data == "admin:export_settings":
+            await _edit_menu(callback, admin_export_text(language),
+                             lambda use_icons: back_keyboard(use_icons, "admin", language), settings, db)
+            await callback.message.answer_document(
+                BufferedInputFile(settings_json(settings), filename="result-settings.json"),
+            )
         elif data == "admin:status":
             extra = await db.list_admins()
             await _edit_menu(
                 callback,
                 admin_status_text(language, uptime_seconds=int(time.monotonic() - _STARTED_AT),
-                                  admin_count=len(admin_ids | set(extra)), export_count=exports.active_count),
-                lambda use_icons: back_keyboard(use_icons, language=language), settings, db,
+                                  admin_count=len(admin_ids | set(extra)), export_count=exports.active_count,
+                                  export_limit=exports.max_items, export_ttl=exports.ttl_seconds,
+                                  active_jobs=protection.active_job_count if protection else None,
+                                  job_limit=protection.max_concurrent_jobs if protection else None,
+                                  pack_cooldown=protection.pack_cooldown_seconds if protection else None,
+                                  python_version=platform.python_version(), aiogram_version=aiogram_version),
+                lambda use_icons: status_keyboard(use_icons, language), settings, db,
             )
         elif data == "admin:list":
             extra = await db.list_admins()
@@ -455,11 +473,11 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
                 settings,
                 db,
             )
-        elif data == "menu:settings":
+        elif data in {"menu:settings", "admin:settings"}:
             await _edit_menu(
                 callback,
                 settings_text(settings),
-                lambda icons: settings_keyboard(settings, icons),
+                lambda icons: settings_keyboard(settings, icons, back_to_admin=settings_from_admin),
                 settings,
                 db,
             )
@@ -501,7 +519,7 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
             await _edit_menu(
                 callback,
                 settings_text(settings),
-                lambda icons: settings_keyboard(settings, icons),
+                lambda icons: settings_keyboard(settings, icons, back_to_admin=settings_from_admin),
                 settings,
                 db,
             )

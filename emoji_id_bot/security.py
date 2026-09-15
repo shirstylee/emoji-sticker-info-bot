@@ -174,6 +174,10 @@ class RequestProtection:
                 async with self._lock:
                     self._active_users.discard(user_id)
 
+    @property
+    def active_job_count(self) -> int:
+        return len(self._active_users)
+
     async def _reserve(self, user_id: int, *, is_pack: bool) -> JobAccess:
         async with self._lock:
             if user_id in self._active_users:

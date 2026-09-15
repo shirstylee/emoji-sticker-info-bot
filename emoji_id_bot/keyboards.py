@@ -47,9 +47,9 @@ def main_keyboard(use_icons: bool, language: str | None = None, *, is_admin: boo
 
 def admin_keyboard(use_icons: bool, language: str | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [_button(tr(language, "settings"), "menu:settings", icons.SLIDERS, use_icons, style="primary")],
+        [_button(tr(language, "settings"), "admin:settings", icons.SLIDERS, use_icons, style="primary")],
         [_button(tr(language, "admins"), "admin:list", icons.BOT, use_icons)],
-        [_button(tr(language, "preview"), "admin:preview", icons.IMAGE, use_icons),
+        [_button(tr(language, "export_settings"), "admin:export_settings", icons.DOWNLOAD, use_icons),
          _button(tr(language, "status"), "admin:status", icons.INFO, use_icons)],
         [_button(tr(language, "main_menu"), "menu:main", icons.BACK, use_icons)],
     ])
@@ -62,7 +62,7 @@ def admins_keyboard(roots: frozenset[int], extra: list[int], use_icons: bool,
         if telegram_id not in roots:
             rows.append([_button(f"{tr(language, 'admin_remove')} {telegram_id}",
                                  f"admin:remove:{telegram_id}", icons.CANCEL, use_icons)])
-    rows.append([_button(tr(language, "main_menu"), "menu:main", icons.BACK, use_icons)])
+    rows.append([_button(tr(language, "back"), "admin:main", icons.BACK, use_icons)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -85,7 +85,7 @@ def back_keyboard(
             [
                 _button(
                     tr(language, "back"),
-                    {"admins": "admin:list", "admin": "menu:main"}.get(target, f"menu:{target}"),
+                    {"admins": "admin:list", "admin": "admin:main"}.get(target, f"menu:{target}"),
                     icons.BACK,
                     use_icons,
                     style="primary",
@@ -95,7 +95,7 @@ def back_keyboard(
     )
 
 
-def settings_keyboard(settings: ResultSettings, use_icons: bool) -> InlineKeyboardMarkup:
+def settings_keyboard(settings: ResultSettings, use_icons: bool, *, back_to_admin: bool = False) -> InlineKeyboardMarkup:
     language = settings.language
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -127,8 +127,8 @@ def settings_keyboard(settings: ResultSettings, use_icons: bool) -> InlineKeyboa
             ],
             [
                 _button(
-                    tr(language, "main_menu"),
-                    "menu:main",
+                    tr(language, "back") if back_to_admin else tr(language, "main_menu"),
+                    "admin:main" if back_to_admin else "menu:main",
                     icons.BACK,
                     use_icons,
                     style="primary",
@@ -136,6 +136,13 @@ def settings_keyboard(settings: ResultSettings, use_icons: bool) -> InlineKeyboa
             ],
         ]
     )
+
+
+def status_keyboard(use_icons: bool, language: str | None = None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [_button(tr(language, "refresh_status"), "admin:status", icons.REFRESH, use_icons)],
+        [_button(tr(language, "back"), "admin:main", icons.BACK, use_icons)],
+    ])
 
 
 def appearance_keyboard(settings: ResultSettings, use_icons: bool) -> InlineKeyboardMarkup:

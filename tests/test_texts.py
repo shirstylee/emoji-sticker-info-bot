@@ -2,7 +2,7 @@ from emoji_id_bot.models import ResultSettings
 import html
 import re
 
-from emoji_id_bot.texts import about_text, examples_text, admin_preview_text, admin_status_text
+from emoji_id_bot.texts import about_text, examples_text, admin_export_text, admin_status_text
 from emoji_id_bot.texts import (
     ABOUT_TEXT,
     EXAMPLES_TEXT,
@@ -63,17 +63,19 @@ def test_public_information_and_examples_use_quotes() -> None:
             assert "<tg-emoji" in text
 
 
-def test_admin_tools_are_localized_and_preview_follows_format():
+def test_admin_tools_are_localized_and_status_includes_runtime_information():
     for language in ("ru", "en"):
-        preview = admin_preview_text(ResultSettings(language=language))
-        assert "✈️ - 6028346797368283073" in preview
-        assert "🏐 - CAACAgExampleFileID" in preview
-        assert preview.count("✈️ - 6028346797368283073") == 2
-        unique = admin_preview_text(ResultSettings(language=language, deduplicate=True))
-        assert unique.count("✈️ - 6028346797368283073") == 1
-        status = admin_status_text(language, uptime_seconds=3661, admin_count=2, export_count=3)
+        exported = admin_export_text(language)
+        assert "result-settings.json" in exported
+        status = admin_status_text(language, uptime_seconds=3661, admin_count=2, export_count=3,
+                                   active_jobs=1, job_limit=8, pack_cooldown=8,
+                                   export_limit=100, export_ttl=600,
+                                   python_version="3.14.7", aiogram_version="3.31.0")
         assert "01:01:01" in status
-        for text in (preview, status):
+        assert "<b>1 / 8</b>" in status
+        assert "<b>3 / 100</b>" in status
+        assert "3.14.7" in status and "3.31.0" in status
+        for text in (exported, status):
             assert "<blockquote>" in text
             assert "<tg-emoji" in text
             assert len(text) < 3900

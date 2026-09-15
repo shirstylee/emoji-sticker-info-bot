@@ -6,6 +6,8 @@ from emoji_id_bot.keyboards import (
     main_keyboard,
     result_keyboard,
     settings_keyboard,
+    status_keyboard,
+    back_keyboard,
 )
 from emoji_id_bot.models import ResultSettings
 
@@ -86,11 +88,23 @@ def test_admin_controls_are_only_shown_to_admins() -> None:
         assert not any(button.callback_data == "admin:main" for row in admin.inline_keyboard for button in row)
 
 
-def test_no_keyboard_opens_admin_panel() -> None:
+def test_ordinary_navigation_does_not_open_admin_panel() -> None:
     for keyboard in (main_keyboard(True, is_admin=True), result_keyboard(True, is_admin=True),
-                     settings_keyboard(ResultSettings(), True), admin_keyboard(True),
-                     admins_keyboard(frozenset({1}), [2], True), admin_confirm_keyboard(2, "add", True)):
+                     settings_keyboard(ResultSettings(), True)):
         assert all(button.callback_data != "admin:main" for row in keyboard.inline_keyboard for button in row)
+
+
+def test_admin_sections_offer_premium_back_button() -> None:
+    for keyboard in (settings_keyboard(ResultSettings(), True, back_to_admin=True),
+                     admins_keyboard(frozenset({1}), [2], True), status_keyboard(True),
+                     back_keyboard(True, "admin")):
+        button = keyboard.inline_keyboard[-1][0]
+        assert button.callback_data == "admin:main"
+        assert button.text == "Назад"
+        assert button.icon_custom_emoji_id
+    callbacks = [button.callback_data for row in admin_keyboard(True).inline_keyboard for button in row]
+    assert "admin:preview" not in callbacks
+    assert "admin:export_settings" in callbacks
 
 
 def test_protected_admins_have_no_remove_button() -> None:

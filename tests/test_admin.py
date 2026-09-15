@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
+import json
 
 import pytest
 import pytest_asyncio
@@ -63,13 +64,14 @@ def responses(monkeypatch):
     "settings:language", "settings:reset", "settings:reset_confirm", "set:display_mode:custom",
     "toggle:show_details", "lang:en:start", "admin:main", "admin:list", "admin:add",
     "admin:confirm_add:300", "admin:remove:100", "admin:confirm_remove:100",
-    "admin:preview", "admin:status",
+    "admin:preview", "admin:status", "admin:export_settings", "admin:settings",
 ])
 async def test_regular_user_cannot_use_old_or_forged_admin_buttons(database, state, responses, data):
     await callbacks(callback(data, 200), database, ExportStore(), state, ROOTS)
-    answer, edit, alert, _ = responses
+    answer, edit, alert, document = responses
     edit.assert_not_awaited()
     answer.assert_not_awaited()
+    document.assert_not_awaited()
     alert.assert_awaited_once_with()
     assert await database.get_settings() == ResultSettings()
     assert await database.list_admins() == []
@@ -96,30 +98,65 @@ async def test_settings_command_does_not_open_admin_panel(database, state, respo
 
 
 @pytest.mark.asyncio
-async def test_old_panel_button_is_disabled_for_admin(database, state, responses):
+async def test_back_button_returns_to_admin_panel(database, state, responses):
     await callbacks(callback("admin:main"), database, ExportStore(), state, ROOTS)
-    responses[1].assert_not_awaited()
-    responses[2].assert_awaited_once_with()
+    assert "Админ-панель" in responses[1].await_args.args[0]
+    responses[2].assert_awaited_once_with(None)
 
 
 @pytest.mark.asyncio
-async def test_preview_and_status_are_read_only(database, state, responses):
+async def test_settings_export_and_status_are_read_only(database, state, responses):
     await database.set_value("id_style", "code")
     before = await database.get_settings()
     exports = ExportStore()
     token = exports.put(200, "test.txt", "test content")
-    await callbacks(callback("admin:preview"), database, exports, state, ROOTS)
-    preview = responses[1].await_args.args[0]
-    assert "<blockquote>" in preview
-    assert "<code>6028346797368283073</code>" in preview
-    assert "CAACAgExampleFileID" in preview
-    await callbacks(callback("admin:status"), database, exports, state, ROOTS)
+    await callbacks(callback("admin:export_settings"), database, exports, state, ROOTS)
+    assert "<blockquote>" in responses[1].await_args.args[0]
+    document = responses[3].await_args.args[0]
+    assert document.filename == "result-settings.json"
+    payload = json.loads(document.data)
+    assert payload["settings"]["id_style"] == "code"
+    assert not {"user_id", "language", "is_admin", "admin_ids", "bot_token"} & payload["settings"].keys()
+    protection = RequestProtection(max_concurrent_jobs=3, pack_cooldown_seconds=12)
+    async with protection.job(200):
+        await callbacks(callback("admin:status"), database, exports, state, ROOTS, protection)
     status = responses[1].await_args.args[0]
     assert "Состояние бота" in status
-    assert "TXT-экспорты в кэше: <b>1</b>" in status
+    assert "TXT-экспорты в кэше: <b>1 / 500</b>" in status
+    assert "запросы / лимит: <b>1 / 3</b>" in status
+    assert "<b>12 с</b>" in status
+    assert "Python <code>" in status and "aiogram <code>" in status
     assert "test content" not in status
     assert exports.get(token, 200) is not None
     assert await database.get_settings() == before
+
+
+@pytest.mark.asyncio
+async def test_settings_back_destination_preserves_entry_point(database, state, responses):
+    exports = ExportStore()
+    for data in ("admin:settings", "settings:appearance", "set:id_style:code", "menu:settings", "settings:reset_confirm"):
+        await callbacks(callback(data), database, exports, state, ROOTS)
+    keyboard = responses[1].await_args.kwargs["reply_markup"]
+    assert keyboard.inline_keyboard[-1][0].callback_data == "admin:main"
+    await callbacks(callback("menu:main"), database, exports, state, ROOTS)
+    await callbacks(callback("menu:settings"), database, exports, state, ROOTS)
+    keyboard = responses[1].await_args.kwargs["reply_markup"]
+    assert keyboard.inline_keyboard[-1][0].callback_data == "menu:main"
+
+
+@pytest.mark.asyncio
+async def test_revoked_admin_cannot_download_settings(database, state, responses):
+    await database.add_admin(200)
+    await database.remove_admin(200)
+    await callbacks(callback("admin:export_settings", 200), database, ExportStore(), state, ROOTS)
+    responses[3].assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_removed_preview_button_does_not_export_settings(database, state, responses):
+    await callbacks(callback("admin:preview"), database, ExportStore(), state, ROOTS)
+    responses[1].assert_not_awaited()
+    responses[3].assert_not_awaited()
 
 
 @pytest.mark.asyncio

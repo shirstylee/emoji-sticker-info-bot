@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from functools import wraps
+import html
 
 from . import icons
 from .i18n import language_code, tr
-from .models import EmojiItem, ResultSettings, StickerItem
-from .formatters import format_emoji_lines, format_sticker_lines, pack_header
+from .models import ResultSettings
 
 
 def _state_icon(value: bool) -> str:
@@ -32,11 +32,11 @@ Set a shared format for all new bot results.
 {icons.tag(icons.BOT, '🤖')} <b>Administrators</b>
 Grant or revoke access to this panel. Each administrator can manage formatting and other administrators.
 
-{icons.tag(icons.IMAGE, '🖼')} <b>Preview</b>
-See how the current settings format sample emoji and stickers.
+{icons.tag(icons.DOWNLOAD, '⬇️')} <b>Export settings</b>
+Download a JSON snapshot of the current shared result format.
 
 {icons.tag(icons.INFO, 'ℹ️')} <b>Bot status</b>
-Check uptime, configuration availability and the number of cached TXT exports."""
+Check uptime, active text jobs, processing limits, cached TXT exports and runtime versions."""
     return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Админ-панель</b>
 
 {icons.tag(icons.SLIDERS, '🎛')} <b>Настройки результата</b>
@@ -45,43 +45,41 @@ Check uptime, configuration availability and the number of cached TXT exports.""
 {icons.tag(icons.BOT, '🤖')} <b>Администраторы</b>
 Выдавайте и отзывайте доступ к панели. Каждый администратор может менять оформление и управлять другими администраторами.
 
-{icons.tag(icons.IMAGE, '🖼')} <b>Предпросмотр</b>
-Посмотрите, как текущие настройки оформляют примеры эмодзи и стикеров.
+{icons.tag(icons.DOWNLOAD, '⬇️')} <b>Экспорт настроек</b>
+Скачайте текущие общие настройки оформления в JSON.
 
 {icons.tag(icons.INFO, 'ℹ️')} <b>Состояние бота</b>
-Проверьте время работы, доступность настроек и количество TXT-экспортов в кэше."""
+Проверьте время работы, активные текстовые запросы, лимиты обработки, TXT-экспорты в кэше и версии среды."""
 
 
 @_quoted_page
-def admin_preview_text(settings: ResultSettings) -> str:
-    english = language_code(settings.language) == "en"
-    sample = EmojiItem("custom", "✈️", icons.TELEGRAM)
-    items = [sample, EmojiItem("unicode", "🏐", "U+1F3D0")]
-    if not settings.deduplicate:
-        items.append(sample)
-    emoji_lines = pack_header("Example Emoji", len(items), "custom_emoji",
-                             "https://t.me/addemoji/PackName", settings)
-    emoji_lines += format_emoji_lines(items, settings)
-    sticker = StickerItem(
-        file_id="CAACAgExampleFileID", file_unique_id="AgExampleUniqueID", emoji="🏐",
-        sticker_type="regular", set_name="ExampleStickers", custom_emoji_id=None,
-        is_animated=False, is_video=False, is_premium=False, width=512, height=512,
-    )
-    sticker_lines = format_sticker_lines([sticker], settings, compact=False)
-    heading = "Result preview" if english else "Предпросмотр результата"
-    note = ("Sample data, not a real pack. One emoji is repeated to demonstrate duplicate removal. Settings are not changed."
-            if english else "Демонстрационные данные, не реальный пак. Один эмодзи повторяется для проверки удаления дублей. Настройки не меняются.")
-    return (f"{icons.tag(icons.IMAGE, '🖼')} <b>{heading}</b>\n\n"
-            f"{icons.tag(icons.INFO, 'ℹ️')} {note}\n\n"
-            + "\n".join(emoji_lines) + "\n\n" + "\n".join(sticker_lines))
+def admin_export_text(language: str | None) -> str:
+    if language_code(language) == "en":
+        return f"""{icons.tag(icons.DOWNLOAD, '⬇️')} <b>Export settings</b>
+
+{icons.tag(icons.FILE, '📁')} <code>result-settings.json</code> contains the shared result format: emoji view, ID formatting, spacing, pack options and button icons.
+
+{icons.tag(icons.INFO, 'ℹ️')} Save it to compare settings or reapply them manually later. This is not a full database backup; automatic import is not available. Exporting does not change the bot settings."""
+    return f"""{icons.tag(icons.DOWNLOAD, '⬇️')} <b>Экспорт настроек</b>
+
+{icons.tag(icons.FILE, '📁')} В файле <code>result-settings.json</code> — общие параметры результата: вид эмодзи, оформление ID, пробелы, параметры паков и иконок кнопок.
+
+{icons.tag(icons.INFO, 'ℹ️')} Сохраните файл для сравнения настроек или их ручного восстановления. Это не полная копия базы; автоматический импорт пока не предусмотрен. Экспорт не меняет настройки бота."""
 
 
 @_quoted_page
 def admin_status_text(language: str | None, *, uptime_seconds: int,
-                      admin_count: int, export_count: int) -> str:
+                      admin_count: int, export_count: int,
+                      export_limit: int = 500, export_ttl: int = 3600,
+                      active_jobs: int | None = None, job_limit: int | None = None,
+                      pack_cooldown: float | None = None,
+                      python_version: str = "—", aiogram_version: str = "—") -> str:
     hours, remainder = divmod(max(0, uptime_seconds), 3600)
     minutes, seconds = divmod(remainder, 60)
     uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    jobs = f"{active_jobs} / {job_limit}" if active_jobs is not None and job_limit is not None else "—"
+    cooldown = f"{pack_cooldown:g}" if pack_cooldown is not None else "—"
+    versions = f"Python <code>{html.escape(python_version)}</code> · aiogram <code>{html.escape(aiogram_version)}</code>"
     if language_code(language) == "en":
         return f"""{icons.tag(icons.INFO, 'ℹ️')} <b>Bot status</b>
 
@@ -90,7 +88,13 @@ def admin_status_text(language: str | None, *, uptime_seconds: int,
 {icons.tag(icons.CONFIRM, '✅')} Settings database: <b>Readable</b>
 
 {icons.tag(icons.SETTINGS, '⚙️')} Administrators: <b>{admin_count}</b>
-{icons.tag(icons.DOWNLOAD, '⬇️')} Cached TXT exports: <b>{export_count}</b>
+{icons.tag(icons.DOWNLOAD, '⬇️')} Cached TXT exports: <b>{export_count} / {export_limit}</b>
+{icons.tag(icons.FILE, '📁')} TXT cache lifetime: up to <b>{export_ttl} s</b>
+
+{icons.tag(icons.SLIDERS, '🎛')} Active text jobs / limit: <b>{jobs}</b>
+{icons.tag(icons.REFRESH, '🔁')} Per-user pack cooldown: <b>{cooldown} s</b>
+
+{icons.tag(icons.CODE, '🔨')} {versions}
 
 {icons.tag(icons.INFO, 'ℹ️')} Snapshot at the time of opening. Uptime resets when the process restarts."""
     return f"""{icons.tag(icons.INFO, 'ℹ️')} <b>Состояние бота</b>
@@ -100,7 +104,13 @@ def admin_status_text(language: str | None, *, uptime_seconds: int,
 {icons.tag(icons.CONFIRM, '✅')} База настроек: <b>Доступна для чтения</b>
 
 {icons.tag(icons.SETTINGS, '⚙️')} Администраторы: <b>{admin_count}</b>
-{icons.tag(icons.DOWNLOAD, '⬇️')} TXT-экспорты в кэше: <b>{export_count}</b>
+{icons.tag(icons.DOWNLOAD, '⬇️')} TXT-экспорты в кэше: <b>{export_count} / {export_limit}</b>
+{icons.tag(icons.FILE, '📁')} Срок TXT в кэше: до <b>{export_ttl} с</b>
+
+{icons.tag(icons.SLIDERS, '🎛')} Активные текстовые запросы / лимит: <b>{jobs}</b>
+{icons.tag(icons.REFRESH, '🔁')} Пауза между паками одного пользователя: <b>{cooldown} с</b>
+
+{icons.tag(icons.CODE, '🔨')} {versions}
 
 {icons.tag(icons.INFO, 'ℹ️')} Данные на момент открытия. Время работы обнуляется при перезапуске процесса."""
 

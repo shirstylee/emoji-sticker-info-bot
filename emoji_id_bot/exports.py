@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 import secrets
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+
+from .db import SETTING_COLUMNS
+from .models import ResultSettings
+
+
+def settings_json(settings: ResultSettings) -> bytes:
+    payload = {
+        "schema_version": 1,
+        "settings": {key: getattr(settings, key) for key in sorted(SETTING_COLUMNS)},
+    }
+    return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 ANCHOR_RE = re.compile(r'<a\s+href="([^"]+)">(.+?)</a>', re.DOTALL)
