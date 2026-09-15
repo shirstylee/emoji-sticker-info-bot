@@ -206,7 +206,7 @@ async def test_personal_format_is_for_the_current_admin_only(database, state, re
     assert (await database.get_settings(admin_id=100)).prefix_style == "number"
     assert (await database.get_settings(admin_id=101)).prefix_style == "none"
     assert (await database.get_settings()).prefix_style == "none"
-    assert "Личные настройки" in responses[1].await_args.args[0]
+    assert "Личные настройки — только ваши результаты" not in responses[1].await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -220,7 +220,7 @@ async def test_scoped_buttons_remain_correct_when_menus_are_interleaved(database
     assert personal_button == "personal|settings:appearance"
     await state.clear()  # Also simulates expired navigation or a restart.
     await callbacks(callback(global_button), database, exports, state, ROOTS)
-    assert "Настройки пользователей" in responses[1].await_args.args[0]
+    assert "Эти настройки действуют для всех пользователей, кроме администраторов." in responses[1].await_args.args[0]
     await callbacks(callback("global|set:id_style:code"), database, exports, state, ROOTS)
     await callbacks(callback(personal_button), database, exports, state, ROOTS)
     await callbacks(callback("personal|set:id_style:brackets"), database, exports, state, ROOTS)

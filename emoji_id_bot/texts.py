@@ -13,14 +13,12 @@ def _state_icon(value: bool) -> str:
 
 
 def settings_scope_text(language: str | None, scope: str) -> str:
+    if scope == "personal":
+        return icons.tag(icons.INFO, 'ℹ️')
     if language_code(language) == "en":
-        text = ("Personal settings — only your results. Other administrators and regular users are not affected."
-                if scope == "personal" else
-                "User settings — results for regular users only. Administrators use their own personal settings.")
+        text = "These settings apply to all users except administrators."
     else:
-        text = ("Личные настройки — только ваши результаты. Других администраторов и обычных пользователей не затрагивают."
-                if scope == "personal" else
-                "Настройки пользователей — только для обычных пользователей. Администраторы используют свои личные настройки.")
+        text = "Эти настройки действуют для всех пользователей, кроме администраторов."
     return f"{icons.tag(icons.INFO, 'ℹ️')} <b>{text}</b>"
 
 
@@ -28,6 +26,9 @@ def _quoted_page(function):
     @wraps(function)
     def quoted(*args, **kwargs):
         heading, body = function(*args, **kwargs).split("\n\n", 1)
+        # Keep the retained icon with the following text, not in an empty quote.
+        info_icon = icons.tag(icons.INFO, 'ℹ️')
+        body = body.replace(f"{info_icon}\n\n", f"{info_icon}\n")
         blocks = "\n\n".join(f"<blockquote>{section}</blockquote>" for section in body.split("\n\n"))
         return f"{heading}\n\n{blocks}"
     return quoted

@@ -154,13 +154,31 @@ def test_boolean_settings_use_checkmarks_and_crosses() -> None:
     assert ">нет</b>" not in text
 
 
-def test_every_settings_page_identifies_its_scope():
-    for scope, marker in (("personal", "Личные настройки"), ("global", "Настройки пользователей")):
+def test_settings_pages_keep_global_notice_but_omit_personal_notice():
+    for scope in ("personal", "global"):
         settings = ResultSettings(settings_scope=scope)
         pages = [settings_text(settings), appearance_text(settings),
                  sticker_settings_text("ru", scope=scope), pack_settings_text("ru", scope=scope),
                  reset_text("ru", scope=scope)]
         for page in pages:
-            assert marker in page
+            if scope == "global":
+                assert "Эти настройки действуют для всех пользователей, кроме администраторов." in page
+            else:
+                assert "Личные настройки — только ваши результаты" not in page
             assert "<blockquote>" in page
             assert len(page) < 4096
+
+
+def test_personal_settings_retain_premium_icon_and_following_text():
+    from emoji_id_bot import icons
+    for language in ("ru", "en"):
+        text = settings_text(ResultSettings(settings_scope="personal", language=language))
+        icon = icons.tag(icons.INFO, 'ℹ️')
+        assert icon in text
+        assert "Личные настройки — только ваши результаты" not in text
+        assert "Personal settings — only your results" not in text
+        expected = ("Изменения действуют для новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними."
+                    if language == "ru" else
+                    "Changes apply to new results. Previously sent messages and TXT files remain unchanged.")
+        assert f"{icon}\n{expected}" in text
+        assert f"<blockquote>{icon}</blockquote>" not in text
