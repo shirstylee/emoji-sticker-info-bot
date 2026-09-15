@@ -97,6 +97,18 @@ class SecurityMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             if event.chat.type != ChatType.PRIVATE:
                 return None
+            command = (event.text or event.caption or "").split(maxsplit=1)
+            if command and command[0].split("@", 1)[0].lower() in {"/admin", "/settings"}:
+                if not self._messages.allow(user.id):
+                    return None
+                database = data.get("db")
+                is_admin = user.id in data.get("admin_ids", frozenset()) or (
+                    database is not None and await database.is_admin(user.id)
+                )
+                if not is_admin:
+                    # Hidden commands stay silent even when the sender is rate-limited.
+                    return None
+                return await handler(event, data)
             limiter = self._messages
         elif isinstance(event, CallbackQuery):
             message = event.message

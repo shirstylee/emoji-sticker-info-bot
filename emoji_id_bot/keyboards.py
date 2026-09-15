@@ -40,7 +40,7 @@ def main_keyboard(use_icons: bool, language: str | None = None, *, is_admin: boo
     )
     if is_admin:
         keyboard.inline_keyboard.append([
-            _button(tr(language, "admin_panel"), "admin:main", icons.SETTINGS, use_icons),
+            _button(tr(language, "settings"), "menu:settings", icons.SETTINGS, use_icons),
         ])
     return keyboard
 
@@ -49,6 +49,8 @@ def admin_keyboard(use_icons: bool, language: str | None = None) -> InlineKeyboa
     return InlineKeyboardMarkup(inline_keyboard=[
         [_button(tr(language, "settings"), "menu:settings", icons.SLIDERS, use_icons, style="primary")],
         [_button(tr(language, "admins"), "admin:list", icons.BOT, use_icons)],
+        [_button(tr(language, "preview"), "admin:preview", icons.IMAGE, use_icons),
+         _button(tr(language, "status"), "admin:status", icons.INFO, use_icons)],
         [_button(tr(language, "main_menu"), "menu:main", icons.BACK, use_icons)],
     ])
 
@@ -60,7 +62,7 @@ def admins_keyboard(roots: frozenset[int], extra: list[int], use_icons: bool,
         if telegram_id not in roots:
             rows.append([_button(f"{tr(language, 'admin_remove')} {telegram_id}",
                                  f"admin:remove:{telegram_id}", icons.CANCEL, use_icons)])
-    rows.append([_button(tr(language, "back"), "admin:main", icons.BACK, use_icons)])
+    rows.append([_button(tr(language, "main_menu"), "menu:main", icons.BACK, use_icons)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -83,7 +85,7 @@ def back_keyboard(
             [
                 _button(
                     tr(language, "back"),
-                    {"admins": "admin:list", "admin": "admin:main"}.get(target, f"menu:{target}"),
+                    {"admins": "admin:list", "admin": "menu:main"}.get(target, f"menu:{target}"),
                     icons.BACK,
                     use_icons,
                     style="primary",
@@ -125,8 +127,8 @@ def settings_keyboard(settings: ResultSettings, use_icons: bool) -> InlineKeyboa
             ],
             [
                 _button(
-                    tr(language, "admin_panel"),
-                    "admin:main",
+                    tr(language, "main_menu"),
+                    "menu:main",
                     icons.BACK,
                     use_icons,
                     style="primary",
@@ -381,5 +383,5 @@ def result_keyboard(
         ]
     )
     if is_admin:
-        rows[-1].insert(0, _button(tr(language, "admin_panel"), "admin:main", icons.SETTINGS, use_icons))
+        rows[-1].insert(0, _button(tr(language, "settings"), "menu:settings", icons.SETTINGS, use_icons))
     return InlineKeyboardMarkup(inline_keyboard=rows)

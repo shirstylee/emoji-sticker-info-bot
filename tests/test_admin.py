@@ -11,7 +11,7 @@ from emoji_id_bot.db import Database
 from emoji_id_bot.exports import ExportStore
 from emoji_id_bot.handlers import (
     AdminInput, _disable_icons, _get_settings, callbacks, command_admin,
-    command_start, handle_sticker, handle_text, receive_admin_id,
+    command_start, command_settings, handle_sticker, handle_text, receive_admin_id,
 )
 from emoji_id_bot.models import ResultSettings
 from emoji_id_bot.security import RequestProtection
@@ -63,14 +63,14 @@ def responses(monkeypatch):
     "settings:language", "settings:reset", "settings:reset_confirm", "set:display_mode:custom",
     "toggle:show_details", "lang:en:start", "admin:main", "admin:list", "admin:add",
     "admin:confirm_add:300", "admin:remove:100", "admin:confirm_remove:100",
+    "admin:preview", "admin:status",
 ])
 async def test_regular_user_cannot_use_old_or_forged_admin_buttons(database, state, responses, data):
     await callbacks(callback(data, 200), database, ExportStore(), state, ROOTS)
     answer, edit, alert, _ = responses
     edit.assert_not_awaited()
     answer.assert_not_awaited()
-    assert alert.await_args.kwargs["show_alert"] is True
-    assert "администраторам" in alert.await_args.args[0]
+    alert.assert_awaited_once_with()
     assert await database.get_settings() == ResultSettings()
     assert await database.list_admins() == []
 
@@ -79,11 +79,47 @@ async def test_regular_user_cannot_use_old_or_forged_admin_buttons(database, sta
 async def test_admin_command_checks_permissions(database, state, responses):
     answer = responses[0]
     await command_admin(message(200), database, state, ROOTS)
-    assert "администраторам" in answer.await_args.args[0]
+    answer.assert_not_awaited()
     await command_admin(message(), database, state, ROOTS)
     assert "Админ-панель" in answer.await_args.args[0]
     assert "<blockquote>" in answer.await_args.args[0]
     assert all(button.icon_custom_emoji_id for row in answer.await_args.kwargs["reply_markup"].inline_keyboard for button in row)
+
+
+@pytest.mark.asyncio
+async def test_settings_command_does_not_open_admin_panel(database, state, responses):
+    await command_settings(message(200, "/settings"), database, state, ROOTS)
+    responses[0].assert_not_awaited()
+    await command_settings(message(text="/settings"), database, state, ROOTS)
+    assert "Настройки результата" in responses[0].await_args.args[0]
+    assert "Админ-панель" not in responses[0].await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_old_panel_button_is_disabled_for_admin(database, state, responses):
+    await callbacks(callback("admin:main"), database, ExportStore(), state, ROOTS)
+    responses[1].assert_not_awaited()
+    responses[2].assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_preview_and_status_are_read_only(database, state, responses):
+    await database.set_value("id_style", "code")
+    before = await database.get_settings()
+    exports = ExportStore()
+    token = exports.put(200, "test.txt", "test content")
+    await callbacks(callback("admin:preview"), database, exports, state, ROOTS)
+    preview = responses[1].await_args.args[0]
+    assert "<blockquote>" in preview
+    assert "<code>6028346797368283073</code>" in preview
+    assert "CAACAgExampleFileID" in preview
+    await callbacks(callback("admin:status"), database, exports, state, ROOTS)
+    status = responses[1].await_args.args[0]
+    assert "Состояние бота" in status
+    assert "TXT-экспорты в кэше: <b>1</b>" in status
+    assert "test content" not in status
+    assert exports.get(token, 200) is not None
+    assert await database.get_settings() == before
 
 
 @pytest.mark.asyncio

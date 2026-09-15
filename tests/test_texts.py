@@ -1,4 +1,8 @@
 from emoji_id_bot.models import ResultSettings
+import html
+import re
+
+from emoji_id_bot.texts import about_text, examples_text, admin_preview_text, admin_status_text
 from emoji_id_bot.texts import (
     ABOUT_TEXT,
     EXAMPLES_TEXT,
@@ -36,6 +40,43 @@ def test_all_menu_pages_use_custom_emoji_icons() -> None:
 
 def test_main_menu_uses_bulleted_input_list() -> None:
     assert MAIN_TEXT.count("\n• ") == 5
+
+
+def test_main_intro_is_quoted_and_has_display_name() -> None:
+    for language in ("ru", "en"):
+        text = main_text(language)
+        assert "<b>Emoji &amp; Sticker Info</b>" in text
+        assert "emoji-sticker-info-bot" not in text
+        assert text.count("<blockquote>") == text.count("</blockquote>") == 1
+        quote = re.search(r"<blockquote>(.*?)</blockquote>", text, re.S).group(1)
+        assert quote.count("\n• ") == 5
+        assert "Отправьте мне" in quote or "Send me" in quote
+        assert "Я верну" not in quote
+        assert "Emoji & Sticker Info" in html.unescape(text)
+
+
+def test_public_information_and_examples_use_quotes() -> None:
+    for language in ("ru", "en"):
+        for builder in (help_text, about_text, examples_text):
+            text = builder(language)
+            assert text.count("<blockquote>") == text.count("</blockquote>") > 0
+            assert "<tg-emoji" in text
+
+
+def test_admin_tools_are_localized_and_preview_follows_format():
+    for language in ("ru", "en"):
+        preview = admin_preview_text(ResultSettings(language=language))
+        assert "✈️ - 6028346797368283073" in preview
+        assert "🏐 - CAACAgExampleFileID" in preview
+        assert preview.count("✈️ - 6028346797368283073") == 2
+        unique = admin_preview_text(ResultSettings(language=language, deduplicate=True))
+        assert unique.count("✈️ - 6028346797368283073") == 1
+        status = admin_status_text(language, uptime_seconds=3661, admin_count=2, export_count=3)
+        assert "01:01:01" in status
+        for text in (preview, status):
+            assert "<blockquote>" in text
+            assert "<tg-emoji" in text
+            assert len(text) < 3900
 
 
 def test_settings_describe_both_display_mode() -> None:

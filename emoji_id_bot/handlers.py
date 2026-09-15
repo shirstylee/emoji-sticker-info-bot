@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import replace
 from typing import Callable
 
@@ -61,6 +62,8 @@ from .texts import (
     admins_text,
     admin_prompt_text,
     admin_confirm_text,
+    admin_preview_text,
+    admin_status_text,
     about_text,
     appearance_text,
     examples_text,
@@ -74,6 +77,7 @@ from .texts import (
 
 
 logger = logging.getLogger(__name__)
+_STARTED_AT = time.monotonic()
 router = Router(name=__name__)
 _security_middleware = SecurityMiddleware()
 router.message.outer_middleware(_security_middleware)
@@ -291,14 +295,13 @@ async def command_help(message: Message, db: Database, state: FSMContext,
     )
 
 
-@router.message(Command("admin", "settings"))
+@router.message(Command("admin"))
 async def command_admin(message: Message, db: Database, state: FSMContext,
                         admin_ids: frozenset[int] = frozenset()) -> None:
     if message.from_user is None:
         return
     await state.clear()
     if message.chat.type != ChatType.PRIVATE or not await _is_admin(db, message.from_user.id, admin_ids):
-        await message.answer(tr(message.from_user.language_code, "admin_only"))
         return
     settings = await _get_settings(db, message.from_user, admin_ids)
     await _answer_menu(
@@ -308,6 +311,18 @@ async def command_admin(message: Message, db: Database, state: FSMContext,
         settings,
         db,
     )
+
+
+@router.message(Command("settings"))
+async def command_settings(message: Message, db: Database, state: FSMContext,
+                           admin_ids: frozenset[int] = frozenset()) -> None:
+    if (message.from_user is None or message.chat.type != ChatType.PRIVATE
+            or not await _is_admin(db, message.from_user.id, admin_ids)):
+        return
+    await state.clear()
+    settings = await _get_settings(db, message.from_user, admin_ids)
+    await _answer_menu(message, settings_text(settings),
+                       lambda use_icons: settings_keyboard(settings, use_icons), settings, db)
 
 
 @router.callback_query()
@@ -325,7 +340,11 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
     public = data in {"menu:main", "menu:help", "menu:examples", "menu:about"} or data.startswith("export:")
     if not public and not await _is_admin(db, user_id, admin_ids):
         await state.clear()
-        await callback.answer(tr(callback.from_user.language_code, "admin_only"), show_alert=True)
+        await callback.answer()
+        return
+    if data == "admin:main":
+        # Old keyboards cannot open the panel; /admin is the only entry point.
+        await callback.answer()
         return
     settings = await _get_settings(db, callback.from_user, admin_ids)
     await state.clear()
@@ -354,9 +373,17 @@ async def callbacks(callback: CallbackQuery, db: Database, exports: ExportStore,
     notice: str | None = None
 
     try:
-        if data == "admin:main":
-            await _edit_menu(callback, admin_text(language),
-                             lambda use_icons: admin_keyboard(use_icons, language), settings, db)
+        if data == "admin:preview":
+            await _edit_menu(callback, admin_preview_text(settings),
+                             lambda use_icons: back_keyboard(use_icons, "settings", language), settings, db)
+        elif data == "admin:status":
+            extra = await db.list_admins()
+            await _edit_menu(
+                callback,
+                admin_status_text(language, uptime_seconds=int(time.monotonic() - _STARTED_AT),
+                                  admin_count=len(admin_ids | set(extra)), export_count=exports.active_count),
+                lambda use_icons: back_keyboard(use_icons, language=language), settings, db,
+            )
         elif data == "admin:list":
             extra = await db.list_admins()
             await _edit_menu(callback, admins_text(admin_ids, extra, language),

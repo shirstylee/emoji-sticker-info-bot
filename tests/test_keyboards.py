@@ -81,8 +81,16 @@ def test_admin_controls_are_only_shown_to_admins() -> None:
     for builder in (main_keyboard, result_keyboard):
         regular = builder(True)
         admin = builder(True, is_admin=True)
-        assert not any(button.callback_data == "admin:main" for row in regular.inline_keyboard for button in row)
-        assert any(button.callback_data == "admin:main" for row in admin.inline_keyboard for button in row)
+        assert not any(button.callback_data == "menu:settings" for row in regular.inline_keyboard for button in row)
+        assert any(button.callback_data == "menu:settings" and button.text == "Настройки" for row in admin.inline_keyboard for button in row)
+        assert not any(button.callback_data == "admin:main" for row in admin.inline_keyboard for button in row)
+
+
+def test_no_keyboard_opens_admin_panel() -> None:
+    for keyboard in (main_keyboard(True, is_admin=True), result_keyboard(True, is_admin=True),
+                     settings_keyboard(ResultSettings(), True), admin_keyboard(True),
+                     admins_keyboard(frozenset({1}), [2], True), admin_confirm_keyboard(2, "add", True)):
+        assert all(button.callback_data != "admin:main" for row in keyboard.inline_keyboard for button in row)
 
 
 def test_protected_admins_have_no_remove_button() -> None:

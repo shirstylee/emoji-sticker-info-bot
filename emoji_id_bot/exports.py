@@ -49,6 +49,11 @@ class ExportStore:
         self._items.move_to_end(token)
         return item
 
+    @property
+    def active_count(self) -> int:
+        self._purge()
+        return len(self._items)
+
     def _purge(self) -> None:
         now = time.monotonic()
         expired = [token for token, item in self._items.items() if item.expires_at <= now]

@@ -13,6 +13,8 @@ def language_code(value: str | None) -> str:
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
     "ru": {
+        "preview": "Предпросмотр",
+        "status": "Состояние бота",
         "admin_panel": "Админ-панель",
         "admins": "Администраторы",
         "admin_add": "Добавить администратора",
@@ -88,6 +90,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "private_only": "Для безопасности бот работает только в личном чате.",
     },
     "en": {
+        "preview": "Preview",
+        "status": "Bot status",
         "admin_panel": "Admin panel",
         "admins": "Administrators",
         "admin_add": "Add administrator",

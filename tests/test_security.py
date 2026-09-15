@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.enums import ChatType
@@ -10,6 +11,36 @@ from emoji_id_bot.security import (
     SecurityMiddleware,
     SlidingWindowLimiter,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["/admin", "/admin@emoji_info_bot", "/ADMIN", "/settings"])
+async def test_hidden_commands_are_silent_even_when_spammed(monkeypatch, command):
+    middleware = SecurityMiddleware(message_limit=1)
+    notify, handler = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(middleware, "_notify", notify)
+    db = SimpleNamespace(is_admin=AsyncMock(return_value=False))
+    event = Message(message_id=1, date=datetime.now(timezone.utc),
+                    chat=Chat(id=42, type="private"),
+                    from_user=User(id=42, is_bot=False, first_name="Test"), text=command)
+    for _ in range(5):
+        await middleware(handler, event, {"db": db, "admin_ids": frozenset({100})})
+    notify.assert_not_awaited()
+    handler.assert_not_awaited()
+    db.is_admin.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("from_env", [True, False])
+async def test_hidden_commands_reach_handlers_for_authorized_admins(from_env):
+    middleware = SecurityMiddleware()
+    handler = AsyncMock()
+    db = SimpleNamespace(is_admin=AsyncMock(return_value=not from_env))
+    event = Message(message_id=1, date=datetime.now(timezone.utc),
+                    chat=Chat(id=42, type="private"),
+                    from_user=User(id=42, is_bot=False, first_name="Test"), text="/admin")
+    await middleware(handler, event, {"db": db, "admin_ids": frozenset({42}) if from_env else frozenset()})
+    handler.assert_awaited_once()
 
 
 def test_sliding_window_limiter_allows_requests_again_after_window() -> None:

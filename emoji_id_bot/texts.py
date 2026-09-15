@@ -4,14 +4,15 @@ from functools import wraps
 
 from . import icons
 from .i18n import language_code, tr
-from .models import ResultSettings
+from .models import EmojiItem, ResultSettings, StickerItem
+from .formatters import format_emoji_lines, format_sticker_lines, pack_header
 
 
 def _state_icon(value: bool) -> str:
     return icons.tag(icons.CONFIRM, "✅") if value else icons.tag(icons.CANCEL, "❌")
 
 
-def _admin_page(function):
+def _quoted_page(function):
     @wraps(function)
     def quoted(*args, **kwargs):
         heading, body = function(*args, **kwargs).split("\n\n", 1)
@@ -20,7 +21,7 @@ def _admin_page(function):
     return quoted
 
 
-@_admin_page
+@_quoted_page
 def admin_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Admin panel</b>
@@ -29,17 +30,82 @@ def admin_text(language: str | None) -> str:
 Set a shared format for all new bot results.
 
 {icons.tag(icons.BOT, '🤖')} <b>Administrators</b>
-Grant or revoke access to this panel. Each administrator can manage formatting and other administrators."""
+Grant or revoke access to this panel. Each administrator can manage formatting and other administrators.
+
+{icons.tag(icons.IMAGE, '🖼')} <b>Preview</b>
+See how the current settings format sample emoji and stickers.
+
+{icons.tag(icons.INFO, 'ℹ️')} <b>Bot status</b>
+Check uptime, configuration availability and the number of cached TXT exports."""
     return f"""{icons.tag(icons.SETTINGS, '⚙️')} <b>Админ-панель</b>
 
 {icons.tag(icons.SLIDERS, '🎛')} <b>Настройки результата</b>
 Задайте единый формат для всех новых ответов бота.
 
 {icons.tag(icons.BOT, '🤖')} <b>Администраторы</b>
-Выдавайте и отзывайте доступ к панели. Каждый администратор может менять оформление и управлять другими администраторами."""
+Выдавайте и отзывайте доступ к панели. Каждый администратор может менять оформление и управлять другими администраторами.
+
+{icons.tag(icons.IMAGE, '🖼')} <b>Предпросмотр</b>
+Посмотрите, как текущие настройки оформляют примеры эмодзи и стикеров.
+
+{icons.tag(icons.INFO, 'ℹ️')} <b>Состояние бота</b>
+Проверьте время работы, доступность настроек и количество TXT-экспортов в кэше."""
 
 
-@_admin_page
+@_quoted_page
+def admin_preview_text(settings: ResultSettings) -> str:
+    english = language_code(settings.language) == "en"
+    sample = EmojiItem("custom", "✈️", icons.TELEGRAM)
+    items = [sample, EmojiItem("unicode", "🏐", "U+1F3D0")]
+    if not settings.deduplicate:
+        items.append(sample)
+    emoji_lines = pack_header("Example Emoji", len(items), "custom_emoji",
+                             "https://t.me/addemoji/PackName", settings)
+    emoji_lines += format_emoji_lines(items, settings)
+    sticker = StickerItem(
+        file_id="CAACAgExampleFileID", file_unique_id="AgExampleUniqueID", emoji="🏐",
+        sticker_type="regular", set_name="ExampleStickers", custom_emoji_id=None,
+        is_animated=False, is_video=False, is_premium=False, width=512, height=512,
+    )
+    sticker_lines = format_sticker_lines([sticker], settings, compact=False)
+    heading = "Result preview" if english else "Предпросмотр результата"
+    note = ("Sample data, not a real pack. One emoji is repeated to demonstrate duplicate removal. Settings are not changed."
+            if english else "Демонстрационные данные, не реальный пак. Один эмодзи повторяется для проверки удаления дублей. Настройки не меняются.")
+    return (f"{icons.tag(icons.IMAGE, '🖼')} <b>{heading}</b>\n\n"
+            f"{icons.tag(icons.INFO, 'ℹ️')} {note}\n\n"
+            + "\n".join(emoji_lines) + "\n\n" + "\n".join(sticker_lines))
+
+
+@_quoted_page
+def admin_status_text(language: str | None, *, uptime_seconds: int,
+                      admin_count: int, export_count: int) -> str:
+    hours, remainder = divmod(max(0, uptime_seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    if language_code(language) == "en":
+        return f"""{icons.tag(icons.INFO, 'ℹ️')} <b>Bot status</b>
+
+{icons.tag(icons.REFRESH, '🔁')} Uptime (hours:minutes:seconds): <code>{uptime}</code>
+{icons.tag(icons.BOT, '🤖')} Update mode: <b>Long polling</b>
+{icons.tag(icons.CONFIRM, '✅')} Settings database: <b>Readable</b>
+
+{icons.tag(icons.SETTINGS, '⚙️')} Administrators: <b>{admin_count}</b>
+{icons.tag(icons.DOWNLOAD, '⬇️')} Cached TXT exports: <b>{export_count}</b>
+
+{icons.tag(icons.INFO, 'ℹ️')} Snapshot at the time of opening. Uptime resets when the process restarts."""
+    return f"""{icons.tag(icons.INFO, 'ℹ️')} <b>Состояние бота</b>
+
+{icons.tag(icons.REFRESH, '🔁')} Время работы (часы:минуты:секунды): <code>{uptime}</code>
+{icons.tag(icons.BOT, '🤖')} Получение обновлений: <b>Long polling</b>
+{icons.tag(icons.CONFIRM, '✅')} База настроек: <b>Доступна для чтения</b>
+
+{icons.tag(icons.SETTINGS, '⚙️')} Администраторы: <b>{admin_count}</b>
+{icons.tag(icons.DOWNLOAD, '⬇️')} TXT-экспорты в кэше: <b>{export_count}</b>
+
+{icons.tag(icons.INFO, 'ℹ️')} Данные на момент открытия. Время работы обнуляется при перезапуске процесса."""
+
+
+@_quoted_page
 def admins_text(roots: frozenset[int], extra: list[int], language: str | None) -> str:
     root_lines = "\n".join(f"<code>{value}</code>" for value in sorted(roots))
     extra_lines = "\n".join(f"<code>{value}</code>" for value in extra if value not in roots) or "—"
@@ -64,7 +130,7 @@ def admins_text(roots: frozenset[int], extra: list[int], language: str | None) -
 {icons.tag(icons.INFO, 'ℹ️')} Кнопками ниже можно выдать или отозвать доступ. Защищённых администраторов можно изменить только в ADMIN_IDS на сервере с последующим перезапуском."""
 
 
-@_admin_page
+@_quoted_page
 def admin_prompt_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.CONFIRM, '✅')} <b>Add administrator</b>
@@ -79,7 +145,7 @@ def admin_prompt_text(language: str | None) -> str:
 {icons.tag(icons.INFO, 'ℹ️')} На следующем экране нужно подтвердить выдачу доступа. Для отмены нажмите «Назад» или отправьте /cancel. На ввод ID даётся 10 минут."""
 
 
-@_admin_page
+@_quoted_page
 def admin_confirm_text(telegram_id: int, action: str, language: str | None) -> str:
     if language_code(language) == "en":
         title = "Grant administrator access?" if action == "add" else "Revoke administrator access?"
@@ -96,28 +162,29 @@ def admin_confirm_text(telegram_id: int, action: str, language: str | None) -> s
 
 def main_text(language: str | None) -> str:
     if language_code(language) == "en":
-        return f"""{icons.tag(icons.BOT, "🤖")} <b>emoji-sticker-info-bot</b>
+        return f"""{icons.tag(icons.BOT, "🤖")} <b>Emoji &amp; Sticker Info</b>
 
-{icons.tag(icons.COMMAND, "🔣")} <b>Send me:</b>
+<blockquote>{icons.tag(icons.COMMAND, "🔣")} <b>Send me:</b>
 • a standard or Premium emoji;
 • a <code>t.me/addemoji/…</code> link;
 • a standard or Premium sticker;
 • a <code>t.me/addstickers/…</code> link;
-• a <code>custom_emoji_id</code>, Unicode code or sticker <code>file_id</code> to display it.
+• a <code>custom_emoji_id</code>, Unicode code or sticker <code>file_id</code> to display it.</blockquote>
 
 {icons.tag(icons.SEARCH, "🔎")} I will return every available ID. Standard emoji have no Telegram ID, so their Unicode code will be shown."""
-    return f"""{icons.tag(icons.BOT, "🤖")} <b>emoji-sticker-info-bot</b>
+    return f"""{icons.tag(icons.BOT, "🤖")} <b>Emoji &amp; Sticker Info</b>
 
-{icons.tag(icons.COMMAND, "🔣")} <b>Отправьте мне:</b>
+<blockquote>{icons.tag(icons.COMMAND, "🔣")} <b>Отправьте мне:</b>
 • обычный или Premium emoji;
 • ссылку <code>t.me/addemoji/…</code>;
 • обычный или Premium-стикер;
 • ссылку <code>t.me/addstickers/…</code>;
-• <code>custom_emoji_id</code>, Unicode-код или <code>file_id</code> стикера, чтобы показать элемент.
+• <code>custom_emoji_id</code>, Unicode-код или <code>file_id</code> стикера, чтобы показать элемент.</blockquote>
 
 {icons.tag(icons.SEARCH, "🔎")} Я верну ID каждого элемента. Для обычных эмодзи, у которых нет Telegram-ID, будет показан Unicode-код."""
 
 
+@_quoted_page
 def help_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.HELP, "❓")} <b>How to use</b>
@@ -160,6 +227,7 @@ def help_text(language: str | None) -> str:
 {icons.tag(icons.INFO, "ℹ️")} Если пак большой, результат автоматически придёт несколькими сообщениями. Кнопка «Экспорт TXT» скачает полный результат."""
 
 
+@_quoted_page
 def examples_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.ARTICLE, "📝")} <b>Input examples</b>
@@ -198,6 +266,7 @@ def examples_text(language: str | None) -> str:
 {icons.tag(icons.IMAGE, "🖼")} Сам стикер можно просто переслать боту. Premium emoji важно отправлять именно как custom emoji, а не как картинку."""
 
 
+@_quoted_page
 def about_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.INFO, "ℹ️")} <b>About the bot</b>
@@ -226,7 +295,7 @@ def about_text(language: str | None) -> str:
 {icons.tag(icons.DOWNLOAD, "⬇️")} После проверки результата его можно целиком скачать в TXT — это особенно удобно для больших паков."""
 
 
-@_admin_page
+@_quoted_page
 def settings_text(settings: ResultSettings) -> str:
     language = language_code(settings.language)
     if language == "en":
@@ -305,7 +374,7 @@ def settings_text(settings: ResultSettings) -> str:
 """.rstrip()
 
 
-@_admin_page
+@_quoted_page
 def appearance_text(settings: ResultSettings) -> str:
     language = language_code(settings.language)
     variants_gap = " " if settings.space_between_variants else ""
@@ -338,7 +407,7 @@ def appearance_text(settings: ResultSettings) -> str:
     )
 
 
-@_admin_page
+@_quoted_page
 def sticker_settings_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.STICKER, "🙂")} <b>Sticker IDs and details</b>
@@ -371,7 +440,7 @@ Shows <code>file_id</code> for working with the file and <code>file_unique_id</c
 {icons.tag(icons.PREMIUM, "⭐️")} Для custom emoji первым всегда показывается <code>custom_emoji_id</code> — настройка выше его не заменяет."""
 
 
-@_admin_page
+@_quoted_page
 def pack_settings_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.LINK, "🔗")} <b>Packs and interface</b>
@@ -382,7 +451,7 @@ def pack_settings_text(language: str | None) -> str:
 {icons.tag(icons.LIST, "🗂")} Здесь настраиваются заголовки больших результатов, удаление повторяющихся ID и Premium-иконки inline-кнопок."""
 
 
-@_admin_page
+@_quoted_page
 def reset_text(language: str | None) -> str:
     if language_code(language) == "en":
         return f"""{icons.tag(icons.WARNING, "❗️")} <b>Reset settings?</b>
