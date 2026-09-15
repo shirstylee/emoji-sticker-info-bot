@@ -180,5 +180,17 @@ def test_personal_settings_retain_premium_icon_and_following_text():
         expected = ("Изменения действуют для новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними."
                     if language == "ru" else
                     "Changes apply to new results. Previously sent messages and TXT files remain unchanged.")
-        assert f"{icon}\n{expected}" in text
+        assert f"{icon} {expected}" in text
         assert f"<blockquote>{icon}</blockquote>" not in text
+
+
+def test_settings_notice_has_no_forced_line_breaks():
+    for language in ("ru", "en"):
+        for scope in ("personal", "global"):
+            text = settings_text(ResultSettings(language=language, settings_scope=scope))
+            notice = re.search(r"<blockquote>(.*?)</blockquote>", text, re.S).group(1)
+            assert "\n" not in notice
+            if scope == "global":
+                expected = ("администраторов.</b> Изменения" if language == "ru"
+                            else "administrators.</b> Changes")
+                assert expected in notice

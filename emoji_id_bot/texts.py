@@ -346,8 +346,7 @@ def settings_text(settings: ResultSettings) -> str:
         }[settings.sticker_id_mode]
         return f"""{icons.tag(icons.SETTINGS, "⚙️")} <b>Result settings</b>
 
-{scope_note}
-Changes apply to new results. Previously sent messages and TXT files remain unchanged.
+{scope_note} Changes apply to new results. Previously sent messages and TXT files remain unchanged.
 
 {icons.tag(icons.PREMIUM, "⭐️")} Emoji view: <b>{display}</b>
 {icons.tag(icons.CODE, "🔨")} ID formatting: <b>{id_style}</b>
@@ -384,8 +383,7 @@ Changes apply to new results. Previously sent messages and TXT files remain unch
     }[settings.sticker_id_mode]
     return f"""{icons.tag(icons.SETTINGS, "⚙️")} <b>Настройки результата</b>
 
-{scope_note}
-Изменения действуют для новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними.
+{scope_note} Изменения действуют для новых результатов. Уже отправленные сообщения и TXT-файлы остаются прежними.
 
 {icons.tag(icons.PREMIUM, "⭐️")} Вид эмодзи: <b>{display}</b>
 {icons.tag(icons.CODE, "🔨")} Оформление ID: <b>{id_style}</b>
